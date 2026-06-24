@@ -24,6 +24,7 @@ export function useWebcamProctor(
   const verificationSentRef = useRef(false);
   const [status, setStatus] = useState<WebcamStatus>("idle");
   const [lastFace, setLastFace] = useState<FaceStatus>("unknown");
+  const [isMobile, setIsMobile] = useState(false);
 
   const upload = useServerFn(uploadSnapshot);
   const log = useServerFn(logEvents);
@@ -40,8 +41,9 @@ export function useWebcamProctor(
     if (!detectorRef.current) return "unknown";
     try {
       const faces = await detectorRef.current.detect(canvas);
-      if (!faces || faces.length === 0) return "missing";
-      if (faces.length > 1) return "multiple";
+      const count = Array.isArray(faces) ? faces.length : typeof faces === "number" ? faces : 0;
+      if (!count || count === 0) return "missing";
+      if (count > 1) return "multiple";
       return "ok";
     } catch {
       return "unknown";
@@ -99,6 +101,13 @@ export function useWebcamProctor(
         setStatus("ready");
         logEvent("camera_granted", "info");
 
+        // Mobile detection: proctoring is best on desktop/laptop
+        try {
+          const mobile = /Mobi|Android|iPhone|iPad/i.test(navigator.userAgent || "");
+          setIsMobile(mobile);
+          if (mobile) logEvent("face_detector_unavailable", "warn", { mobile: true });
+        } catch {}
+
         // Face detector setup
         if (window.FaceDetector) {
           try {
@@ -107,7 +116,40 @@ export function useWebcamProctor(
             logEvent("face_detector_unavailable", "info");
           }
         } else {
-          logEvent("face_detector_unavailable", "info");
+          // Try loading facefilter (fallback) from CDN
+          try {
+            await new Promise<void>((resolve, reject) => {
+              if ((window as any).facefilter || (window as any).faceFilter || (window as any).FaceFilter) return resolve();
+              const s = document.createElement("script");
+              s.src = "https://cdn.jsdelivr.net/npm/facefilter@3.4.3/index.min.js";
+              s.async = true;
+              s.onload = () => resolve();
+              s.onerror = () => reject(new Error("facefilter load failed"));
+              document.head.appendChild(s);
+            });
+
+            const ff = (window as any).facefilter || (window as any).faceFilter || (window as any).FaceFilter || (window as any).FaceFilterLib;
+            if (ff) {
+              // Normalize to an object with detect(canvas) -> Promise<array>
+              if (typeof ff.detect === "function") {
+                detectorRef.current = { detect: (c: HTMLCanvasElement) => Promise.resolve(ff.detect(c)) };
+              } else if (typeof ff.run === "function") {
+                detectorRef.current = { detect: (c: HTMLCanvasElement) => Promise.resolve(ff.run(c)) };
+              } else {
+                // Some builds expose a constructor
+                try {
+                  const inst = new ff();
+                  if (typeof inst.detect === "function") detectorRef.current = inst;
+                } catch {
+                  logEvent("face_detector_unavailable", "info");
+                }
+              }
+            } else {
+              logEvent("face_detector_unavailable", "info");
+            }
+          } catch {
+            logEvent("face_detector_unavailable", "info");
+          }
         }
 
         // Track disconnection
@@ -122,6 +164,19 @@ export function useWebcamProctor(
         window.setTimeout(async () => {
           if (cancelled || verificationSentRef.current) return;
           verificationSentRef.current = true;
+          // Wait briefly for detectorRef to initialize (FaceDetector or facefilter fallback).
+          const waitForDetector = async (timeout = 1500) => {
+            const start = Date.now();
+            while (!detectorRef.current && Date.now() - start < timeout) {
+              // small backoff
+              await new Promise((r) => setTimeout(r, 100));
+            }
+          };
+          try {
+            await waitForDetector(1500);
+          } catch {
+            // ignore
+          }
           await captureAndUpload("verification");
         }, 1200);
 
@@ -155,5 +210,5 @@ export function useWebcamProctor(
     };
   }, [enabled, attemptId, intervalMs, captureAndUpload, logEvent]);
 
-  return { videoRef, status, lastFace };
+  return { videoRef, status, lastFace, isMobile };
 }

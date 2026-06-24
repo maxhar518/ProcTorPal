@@ -1,4 +1,4 @@
-import { useState, type ReactNode } from "react";
+import { useState, useEffect, type ReactNode } from "react";
 import { useServerFn } from "@tanstack/react-start";
 import { useMutation } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
@@ -25,14 +25,23 @@ export function ProctoredSession({
     mutationFn: () => consent({ data: { attemptId: attemptId! } }),
     onSuccess: async () => {
       setAccepted(true);
-      try {
-        await document.documentElement.requestFullscreen();
-      } catch {
-        toast.warning("Fullscreen could not be entered automatically. Use the button at the top of the page.");
-      }
     },
     onError: (e: Error) => toast.error(e.message),
   });
+
+  // Request fullscreen when accepted
+  useEffect(() => {
+    if (accepted) {
+      const enterFullscreen = async () => {
+        try {
+          await document.documentElement.requestFullscreen();
+        } catch (error) {
+          toast.warning("Fullscreen could not be entered automatically. Use the button at the top of the page.");
+        }
+      };
+      enterFullscreen();
+    }
+  }, [accepted]);
 
   if (!attemptId) {
     return (
@@ -116,12 +125,44 @@ function ProctoredRunner({ attemptId, children }: { attemptId: string; children:
         </div>
       )}
 
+      {/* Face detection alerts */}
+      {cam.lastFace === "multiple" && (
+        <div className="fixed left-1/2 top-24 z-50 -translate-x-1/2 w-[min(640px,90%)]">
+          <Alert variant="destructive">
+            <AlertTitle>Multiple faces detected</AlertTitle>
+            <AlertDescription>
+              Only one person is allowed during this assessment. Multiple faces were detected and this has been logged.
+            </AlertDescription>
+          </Alert>
+        </div>
+      )}
+      {cam.lastFace === "missing" && (
+        <div className="fixed left-1/2 top-24 z-50 -translate-x-1/2 w-[min(640px,90%)]">
+          <Alert>
+            <AlertTitle>Face not detected</AlertTitle>
+            <AlertDescription>
+              Your face is not visible. Please position yourself so your face is clearly visible to the camera.
+            </AlertDescription>
+          </Alert>
+        </div>
+      )}
+
       {cam.status === "denied" && (
         <div className="m-4">
           <Alert variant="destructive">
             <AlertTitle>Camera permission denied</AlertTitle>
             <AlertDescription>
               This assessment requires camera access. Please enable camera permission in your browser and refresh the page.
+            </AlertDescription>
+          </Alert>
+        </div>
+      )}
+      {cam.isMobile && (
+        <div className="m-4">
+          <Alert>
+            <AlertTitle>Mobile device detected</AlertTitle>
+            <AlertDescription>
+              This assessment is intended for desktop/laptop devices. Mobile devices may produce unreliable proctoring results.
             </AlertDescription>
           </Alert>
         </div>

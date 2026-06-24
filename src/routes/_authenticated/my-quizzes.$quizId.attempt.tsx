@@ -1,7 +1,7 @@
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { useServerFn } from "@tanstack/react-start";
 import { useQuery, useMutation } from "@tanstack/react-query";
-import { useState } from "react";
+import { useState, useRef, useEffect } from "react";
 import { useCurrentUser } from "@/lib/auth/use-current-user";
 import { AppHeader } from "@/components/app-header";
 import { Button } from "@/components/ui/button";
@@ -12,6 +12,7 @@ import { Loader2 } from "lucide-react";
 import { toast } from "sonner";
 import { getQuizForAttempt, startAttempt, submitAttempt } from "@/lib/quizzes/student.functions";
 import { ProctoredSession } from "@/components/proctoring/ProctoredSession";
+import { QuizTimer } from "@/components/quiz-timer";
 
 export const Route = createFileRoute("/_authenticated/my-quizzes/$quizId/attempt")({
   head: () => ({ meta: [{ title: "Attempt quiz — ProctorAI" }] }),
@@ -41,6 +42,7 @@ function AttemptPage() {
   });
 
   const [answers, setAnswers] = useState<Record<string, string[]>>({});
+  const submitTriggeredRef = useRef(false);
 
   const submitM = useMutation({
     mutationFn: () => submit({ data: {
@@ -54,6 +56,14 @@ function AttemptPage() {
     },
     onError: (e: Error) => toast.error(e.message),
   });
+
+  // Auto-submit when time runs out
+  const handleTimeUp = () => {
+    if (!submitTriggeredRef.current) {
+      submitTriggeredRef.current = true;
+      submitM.mutate();
+    }
+  };
 
   if (loading || isLoading || attemptLoading || !session) {
     return <div className="flex min-h-screen items-center justify-center"><Loader2 className="h-6 w-6 animate-spin text-muted-foreground" /></div>;
@@ -69,6 +79,13 @@ function AttemptPage() {
         <main className="mx-auto max-w-3xl px-6 py-10">
           <h1 className="text-2xl font-semibold">{data.quiz.title}</h1>
           <p className="mb-6 text-sm text-muted-foreground">{data.quiz.description}</p>
+
+          {data.quiz.time_limit_minutes && (
+            <QuizTimer 
+              timeLimit={data.quiz.time_limit_minutes} 
+              onTimeUp={handleTimeUp}
+            />
+          )}
 
           <div className="space-y-4">
             {data.questions.map((q, i) => {
