@@ -20,6 +20,7 @@ const EventTypeSchema = z.enum([
   "camera_disconnected",
   "face_missing",
   "multiple_faces",
+  "phone_detected",
   "face_detector_unavailable",
   "snapshot_uploaded",
   "consent_given",
@@ -250,6 +251,14 @@ export const getAttemptProctoring = createServerFn({ method: "POST" })
     // Summary counts
     const counts: Record<string, number> = {};
     (events ?? []).forEach((e) => { counts[e.event_type] = (counts[e.event_type] ?? 0) + 1; });
+
+    const snapshotCounts = { face_missing: 0, multiple_faces: 0 };
+    (snaps ?? []).forEach((s) => {
+      if (s.face_status === "missing") snapshotCounts.face_missing += 1;
+      if (s.face_status === "multiple") snapshotCounts.multiple_faces += 1;
+    });
+    counts.face_missing = Math.max(counts.face_missing ?? 0, snapshotCounts.face_missing);
+    counts.multiple_faces = Math.max(counts.multiple_faces ?? 0, snapshotCounts.multiple_faces);
 
     return {
       attempt: a,

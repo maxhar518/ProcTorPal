@@ -51,6 +51,7 @@ function AttemptDetailPage() {
   const highlights = [
     { label: "Face not detected", key: "face_missing" },
     { label: "Multiple faces", key: "multiple_faces" },
+    { label: "Phone detected", key: "phone_detected" },
     { label: "Fullscreen exits", key: "fullscreen_exit" },
     { label: "Tab/focus loss", key: "tab_blur" },
     { label: "Restricted shortcuts", key: "restricted_shortcut" },

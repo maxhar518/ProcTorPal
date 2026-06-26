@@ -3,27 +3,38 @@ import { useServerFn } from "@tanstack/react-start";
 import { uploadSnapshot, logEvents } from "./proctoring.functions";
 
 type FaceStatus = "ok" | "missing" | "multiple" | "unknown";
+type ObjectStatus = "none" | "phone" | "unknown";
 
 declare global {
-  // Chromium experimental Face Detector API
-  interface Window { FaceDetector?: any }
+  interface Window {
+    FaceDetector?: any;
+    facefilter?: any;
+    faceFilter?: any;
+    FaceFilter?: any;
+    FaceFilterLib?: any;
+    tf?: any;
+    cocoSsd?: any;
+    blazeface?: any;
+  }
 }
 
 export type WebcamStatus = "idle" | "requesting" | "ready" | "denied" | "disconnected";
 
 export function useWebcamProctor(
   attemptId: string | undefined,
-  enabled: boolean,
   intervalMs = 6000
 ) {
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const detectorRef = useRef<any>(null);
+  const objectDetectorRef = useRef<any>(null);
   const intervalIdRef = useRef<number | null>(null);
   const verificationSentRef = useRef(false);
+  const lastObjectRef = useRef<ObjectStatus>("unknown");
   const [status, setStatus] = useState<WebcamStatus>("idle");
   const [lastFace, setLastFace] = useState<FaceStatus>("unknown");
+  const [lastObject, setLastObject] = useState<ObjectStatus>("unknown");
   const [isMobile, setIsMobile] = useState(false);
 
   const upload = useServerFn(uploadSnapshot);
@@ -37,14 +48,49 @@ export function useWebcamProctor(
     [attemptId, log]
   );
 
+  const loadScript = useCallback(async (src: string) => {
+    if (document.querySelector(`script[src="${src}"]`)) return;
+    await new Promise<void>((resolve, reject) => {
+      const s = document.createElement("script");
+      s.src = src;
+      s.async = true;
+      s.onload = () => resolve();
+      s.onerror = () => reject(new Error(`failed to load ${src}`));
+      document.head.appendChild(s);
+    });
+  }, []);
+
   const detectFaces = useCallback(async (canvas: HTMLCanvasElement): Promise<FaceStatus> => {
     if (!detectorRef.current) return "unknown";
     try {
-      const faces = await detectorRef.current.detect(canvas);
+      let faces: any;
+      if (typeof detectorRef.current.detect === "function") {
+        faces = await detectorRef.current.detect(canvas);
+      } else if (typeof detectorRef.current.estimateFaces === "function") {
+        faces = await detectorRef.current.estimateFaces(canvas, false);
+      } else {
+        return "unknown";
+      }
+
       const count = Array.isArray(faces) ? faces.length : typeof faces === "number" ? faces : 0;
       if (!count || count === 0) return "missing";
       if (count > 1) return "multiple";
       return "ok";
+    } catch {
+      return "unknown";
+    }
+  }, []);
+
+  const detectObjects = useCallback(async (canvas: HTMLCanvasElement): Promise<ObjectStatus> => {
+    if (!objectDetectorRef.current) return "unknown";
+    try {
+      const objects = await objectDetectorRef.current.detect(canvas);
+      if (!Array.isArray(objects) || objects.length === 0) return "none";
+      const hasPhone = objects.some((obj: any) => {
+        const label = typeof obj.class === "string" ? obj.class : typeof obj.label === "string" ? obj.label : undefined;
+        return label?.toLowerCase().includes("phone");
+      });
+      return hasPhone ? "phone" : "none";
     } catch {
       return "unknown";
     }
@@ -67,7 +113,20 @@ export function useWebcamProctor(
       ctx.drawImage(video, 0, 0, w, h);
 
       const faceStatus = await detectFaces(canvas);
+      const objectStatus = await detectObjects(canvas);
       setLastFace(faceStatus);
+      setLastObject(objectStatus);
+
+      if (faceStatus === "multiple") {
+        logEvent("multiple_faces", "critical", { kind });
+      } else if (faceStatus === "missing") {
+        logEvent("face_missing", "warn", { kind });
+      }
+
+      if (objectStatus === "phone" && lastObjectRef.current !== "phone") {
+        logEvent("phone_detected", "critical", { kind, label: "cell phone" });
+      }
+      lastObjectRef.current = objectStatus;
 
       const dataUrl = canvas.toDataURL("image/jpeg", 0.6);
       const base64 = dataUrl.split(",")[1] ?? "";
@@ -77,138 +136,129 @@ export function useWebcamProctor(
         // swallow; lockdown event logging will report repeated failures via UI
       }
     },
-    [attemptId, detectFaces, upload]
+    [attemptId, detectFaces, detectObjects, logEvent, upload]
   );
 
-  // Start camera
-  useEffect(() => {
-    if (!enabled || !attemptId || typeof window === "undefined") return;
-    let cancelled = false;
+  const attachVideoToStream = useCallback(async () => {
+    if (!videoRef.current || !streamRef.current) return;
+    if (videoRef.current.srcObject !== streamRef.current) {
+      videoRef.current.srcObject = streamRef.current;
+      await videoRef.current.play().catch(() => {});
+    }
+  }, []);
 
-    (async () => {
-      setStatus("requesting");
+  const stop = useCallback((resetStatus = true) => {
+    if (intervalIdRef.current) {
+      window.clearInterval(intervalIdRef.current);
+      intervalIdRef.current = null;
+    }
+    if (streamRef.current) {
+      streamRef.current.getTracks().forEach((t) => t.stop());
+      streamRef.current = null;
+    }
+    if (resetStatus) {
+      setStatus("idle");
+    }
+  }, []);
+
+  const requestAccess = useCallback(async () => {
+    if (!attemptId) {
+      throw new Error("Attempt ID is required to start webcam proctoring.");
+    }
+    if (status === "requesting" || status === "ready") return;
+
+    setStatus("requesting");
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ video: { width: 640, height: 480 }, audio: false });
+      streamRef.current = stream;
+      await attachVideoToStream();
+      setStatus("ready");
+      logEvent("camera_granted", "info");
+
       try {
-        const stream = await navigator.mediaDevices.getUserMedia({ video: { width: 640, height: 480 }, audio: false });
-        if (cancelled) {
-          stream.getTracks().forEach((t) => t.stop());
+        const mobile = /Mobi|Android|iPhone|iPad/i.test(navigator.userAgent || "");
+        setIsMobile(mobile);
+        if (mobile) logEvent("face_detector_unavailable", "warn", { mobile: true });
+      } catch {}
+
+      if (window.FaceDetector) {
+        try {
+          detectorRef.current = new window.FaceDetector({ fastMode: true, maxDetectedFaces: 5 });
+        } catch {
+          logEvent("face_detector_unavailable", "info");
+        }
+      }
+
+      if (!detectorRef.current) {
+        try {
+          await loadScript("https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@3.21.0/dist/tf.min.js");
+          await loadScript("https://cdn.jsdelivr.net/npm/@tensorflow-models/blazeface@0.0.7/dist/blazeface.min.js");
+          await window.tf?.ready?.();
+          if (window.blazeface?.load) {
+            const model = await window.blazeface.load();
+            detectorRef.current = model;
+          }
+        } catch {
+          logEvent("face_detector_unavailable", "info", { fallback: "blazeface" });
+        }
+      }
+
+      if (!objectDetectorRef.current) {
+        try {
+          await loadScript("https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@3.21.0/dist/tf.min.js");
+          await loadScript("https://cdn.jsdelivr.net/npm/@tensorflow-models/coco-ssd@2.2.2/dist/coco-ssd.min.js");
+          await window.tf?.ready?.();
+          if (window.cocoSsd?.load) {
+            objectDetectorRef.current = await window.cocoSsd.load();
+          }
+        } catch {
+          logEvent("face_detector_unavailable", "info", { object_detection: true });
+        }
+      }
+
+      stream.getVideoTracks().forEach((t) => {
+        t.addEventListener("ended", () => {
+          setStatus("disconnected");
+          logEvent("camera_disconnected", "critical");
+        });
+      });
+
+      window.setTimeout(async () => {
+        if (verificationSentRef.current) return;
+        verificationSentRef.current = true;
+        const start = Date.now();
+        while (!detectorRef.current && Date.now() - start < 1500) {
+          await new Promise((r) => setTimeout(r, 100));
+        }
+        await captureAndUpload("verification");
+      }, 1200);
+
+      intervalIdRef.current = window.setInterval(() => {
+        const track = streamRef.current?.getVideoTracks()[0];
+        if (!track || track.readyState !== "live") {
+          setStatus("disconnected");
+          logEvent("camera_disconnected", "critical");
           return;
         }
-        streamRef.current = stream;
-        if (videoRef.current) {
-          videoRef.current.srcObject = stream;
-          await videoRef.current.play().catch(() => {});
-        }
-        setStatus("ready");
-        logEvent("camera_granted", "info");
+        captureAndUpload("periodic");
+      }, intervalMs);
+    } catch (err: any) {
+      stop(false);
+      setStatus("denied");
+      logEvent("camera_denied", "critical", { message: err?.message ?? "denied" });
+      throw err;
+    }
+  }, [attemptId, attachVideoToStream, captureAndUpload, intervalMs, loadScript, logEvent, stop, status]);
 
-        // Mobile detection: proctoring is best on desktop/laptop
-        try {
-          const mobile = /Mobi|Android|iPhone|iPad/i.test(navigator.userAgent || "");
-          setIsMobile(mobile);
-          if (mobile) logEvent("face_detector_unavailable", "warn", { mobile: true });
-        } catch {}
+  useEffect(() => {
+    if (videoRef.current && streamRef.current) {
+      attachVideoToStream().catch(() => {});
+    }
+  }, [attachVideoToStream, status]);
 
-        // Face detector setup
-        if (window.FaceDetector) {
-          try {
-            detectorRef.current = new window.FaceDetector({ fastMode: true, maxDetectedFaces: 3 });
-          } catch {
-            logEvent("face_detector_unavailable", "info");
-          }
-        } else {
-          // Try loading facefilter (fallback) from CDN
-          try {
-            await new Promise<void>((resolve, reject) => {
-              if ((window as any).facefilter || (window as any).faceFilter || (window as any).FaceFilter) return resolve();
-              const s = document.createElement("script");
-              s.src = "https://cdn.jsdelivr.net/npm/facefilter@3.4.3/index.min.js";
-              s.async = true;
-              s.onload = () => resolve();
-              s.onerror = () => reject(new Error("facefilter load failed"));
-              document.head.appendChild(s);
-            });
+  useEffect(() => {
+    return () => stop(false);
+  }, [stop]);
 
-            const ff = (window as any).facefilter || (window as any).faceFilter || (window as any).FaceFilter || (window as any).FaceFilterLib;
-            if (ff) {
-              // Normalize to an object with detect(canvas) -> Promise<array>
-              if (typeof ff.detect === "function") {
-                detectorRef.current = { detect: (c: HTMLCanvasElement) => Promise.resolve(ff.detect(c)) };
-              } else if (typeof ff.run === "function") {
-                detectorRef.current = { detect: (c: HTMLCanvasElement) => Promise.resolve(ff.run(c)) };
-              } else {
-                // Some builds expose a constructor
-                try {
-                  const inst = new ff();
-                  if (typeof inst.detect === "function") detectorRef.current = inst;
-                } catch {
-                  logEvent("face_detector_unavailable", "info");
-                }
-              }
-            } else {
-              logEvent("face_detector_unavailable", "info");
-            }
-          } catch {
-            logEvent("face_detector_unavailable", "info");
-          }
-        }
-
-        // Track disconnection
-        stream.getVideoTracks().forEach((t) => {
-          t.addEventListener("ended", () => {
-            setStatus("disconnected");
-            logEvent("camera_disconnected", "critical");
-          });
-        });
-
-        // Verification snapshot then periodic
-        window.setTimeout(async () => {
-          if (cancelled || verificationSentRef.current) return;
-          verificationSentRef.current = true;
-          // Wait briefly for detectorRef to initialize (FaceDetector or facefilter fallback).
-          const waitForDetector = async (timeout = 1500) => {
-            const start = Date.now();
-            while (!detectorRef.current && Date.now() - start < timeout) {
-              // small backoff
-              await new Promise((r) => setTimeout(r, 100));
-            }
-          };
-          try {
-            await waitForDetector(1500);
-          } catch {
-            // ignore
-          }
-          await captureAndUpload("verification");
-        }, 1200);
-
-        intervalIdRef.current = window.setInterval(() => {
-          if (cancelled) return;
-          // also re-check track liveness
-          const track = streamRef.current?.getVideoTracks()[0];
-          if (!track || track.readyState !== "live") {
-            setStatus("disconnected");
-            logEvent("camera_disconnected", "critical");
-            return;
-          }
-          captureAndUpload("periodic");
-        }, intervalMs);
-      } catch (err: any) {
-        setStatus("denied");
-        logEvent("camera_denied", "critical", { message: err?.message ?? "denied" });
-      }
-    })();
-
-    return () => {
-      cancelled = true;
-      if (intervalIdRef.current) {
-        window.clearInterval(intervalIdRef.current);
-        intervalIdRef.current = null;
-      }
-      if (streamRef.current) {
-        streamRef.current.getTracks().forEach((t) => t.stop());
-        streamRef.current = null;
-      }
-    };
-  }, [enabled, attemptId, intervalMs, captureAndUpload, logEvent]);
-
-  return { videoRef, status, lastFace, isMobile };
+  return { videoRef, status, lastFace, lastObject, isMobile, requestAccess, stop };
 }

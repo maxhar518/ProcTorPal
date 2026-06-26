@@ -20,14 +20,32 @@ export function ProctoredSession({
 }) {
   const [consented, setConsented] = useState(false);
   const [accepted, setAccepted] = useState(false);
+  const [starting, setStarting] = useState(false);
   const consent = useServerFn(recordConsent);
+  const cam = useWebcamProctor(attemptId);
   const consentM = useMutation({
     mutationFn: () => consent({ data: { attemptId: attemptId! } }),
-    onSuccess: async () => {
-      setAccepted(true);
-    },
     onError: (e: Error) => toast.error(e.message),
   });
+
+  const handleStart = async () => {
+    if (!attemptId) return;
+    setStarting(true);
+    try {
+      await cam.requestAccess();
+      await consentM.mutateAsync();
+      setAccepted(true);
+    } catch (error: any) {
+      if (error instanceof Error) {
+        toast.error(error.message);
+      } else {
+        toast.error("Camera access is required to start this quiz.");
+      }
+      cam.stop();
+    } finally {
+      setStarting(false);
+    }
+  };
 
   // Request fullscreen when accepted
   useEffect(() => {
@@ -82,23 +100,45 @@ export function ProctoredSession({
             <Button
               className="w-full"
               size="lg"
-              disabled={!consented || consentM.isPending}
-              onClick={() => consentM.mutate()}
+              disabled={!consented || consentM.isPending || starting}
+              onClick={handleStart}
             >
-              {consentM.isPending ? "Starting…" : "Start proctored quiz"}
+              {starting || consentM.isPending ? "Starting…" : "Start proctored quiz"}
             </Button>
+            {cam.status === "requesting" && (
+              <p className="mt-3 text-sm text-muted-foreground">Requesting camera access now. Please allow the browser prompt.</p>
+            )}
+            {cam.status === "denied" && (
+              <Alert className="mt-3" variant="destructive">
+                <AlertTitle>Camera permission required</AlertTitle>
+                <AlertDescription>
+                  This assessment requires camera access. Please enable camera permission in your browser and try again.
+                </AlertDescription>
+              </Alert>
+            )}
           </CardContent>
         </Card>
       </div>
     );
   }
 
-  return <ProctoredRunner attemptId={attemptId}>{children}</ProctoredRunner>;
+  return <ProctoredRunner attemptId={attemptId} cam={cam}>{children}</ProctoredRunner>;
 }
 
-function ProctoredRunner({ attemptId, children }: { attemptId: string; children: ReactNode }) {
+function ProctoredRunner({ attemptId, cam, children }: { attemptId: string; cam: ReturnType<typeof useWebcamProctor>; children: ReactNode }) {
   const lockdown = useLockdown(attemptId, true);
-  const cam = useWebcamProctor(attemptId, true);
+  const [showViolationAlert, setShowViolationAlert] = useState(false);
+
+  useEffect(() => {
+    const hasViolation = cam.lastFace === "multiple" || cam.lastFace === "missing" || cam.lastObject === "phone";
+    if (hasViolation) {
+      setShowViolationAlert(true);
+      return;
+    }
+    if (cam.lastFace === "ok" && cam.lastObject !== "phone") {
+      setShowViolationAlert(false);
+    }
+  }, [cam.lastFace, cam.lastObject]);
 
   return (
     <div className="select-none" style={{ userSelect: "none" }}>
@@ -109,6 +149,7 @@ function ProctoredRunner({ attemptId, children }: { attemptId: string; children:
           <span>
             Camera: <b>{cam.status}</b>
             {cam.lastFace !== "unknown" && <> · Face: <b>{cam.lastFace}</b></>}
+            {cam.lastObject !== "unknown" && <> · Object: <b>{cam.lastObject}</b></>}
           </span>
         </div>
         <div className="flex items-center gap-2">
@@ -126,7 +167,7 @@ function ProctoredRunner({ attemptId, children }: { attemptId: string; children:
       )}
 
       {/* Face detection alerts */}
-      {cam.lastFace === "multiple" && (
+      {showViolationAlert && cam.lastFace === "multiple" && (
         <div className="fixed left-1/2 top-24 z-50 -translate-x-1/2 w-[min(640px,90%)]">
           <Alert variant="destructive">
             <AlertTitle>Multiple faces detected</AlertTitle>
@@ -136,12 +177,22 @@ function ProctoredRunner({ attemptId, children }: { attemptId: string; children:
           </Alert>
         </div>
       )}
-      {cam.lastFace === "missing" && (
+      {showViolationAlert && cam.lastFace === "missing" && (
         <div className="fixed left-1/2 top-24 z-50 -translate-x-1/2 w-[min(640px,90%)]">
           <Alert>
             <AlertTitle>Face not detected</AlertTitle>
             <AlertDescription>
               Your face is not visible. Please position yourself so your face is clearly visible to the camera.
+            </AlertDescription>
+          </Alert>
+        </div>
+      )}
+      {showViolationAlert && cam.lastObject === "phone" && (
+        <div className="fixed left-1/2 top-24 z-50 -translate-x-1/2 w-[min(640px,90%)]">
+          <Alert variant="destructive">
+            <AlertTitle>Phone detected in view</AlertTitle>
+            <AlertDescription>
+              A mobile phone or small device was detected in the camera frame. This is logged as a proctoring violation.
             </AlertDescription>
           </Alert>
         </div>
