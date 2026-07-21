@@ -164,11 +164,11 @@ export const listQuizAttemptsWithRisk = createServerFn({ method: "POST" })
     if (error) throw new Error(error.message);
 
     const studentIds = [...new Set((attempts ?? []).map((a) => a.student_id))];
-    const profMap = new Map<string, { full_name: string | null; email: string | null }>();
+    const profMap = new Map<string, { full_name: string | null; email: string | null; student_id: string | null }>();
     if (studentIds.length > 0) {
       const { data: profs } = await supabase
-        .from("profiles").select("id, full_name, email").in("id", studentIds);
-      (profs ?? []).forEach((p) => profMap.set(p.id, { full_name: p.full_name, email: p.email }));
+        .from("profiles").select("id, full_name, email, student_id").in("id", studentIds);
+      (profs ?? []).forEach((p) => profMap.set(p.id, { full_name: p.full_name, email: p.email, student_id: p.student_id }));
     }
 
     const rows = await Promise.all(
@@ -180,12 +180,13 @@ export const listQuizAttemptsWithRisk = createServerFn({ method: "POST" })
           .select("*", { count: "exact", head: true })
           .eq("attempt_id", a.id)
           .eq("severity", "critical");
-        const prof = profMap.get(a.student_id) ?? { full_name: null, email: null };
+        const prof = profMap.get(a.student_id) ?? { full_name: null, email: null, student_id: null };
         return {
           attempt_id: a.id,
           student_id: a.student_id,
           full_name: prof.full_name,
           email: prof.email,
+          student_id_value: prof.student_id,
           status: a.status,
           score: a.score,
           max_score: a.max_score,
@@ -221,7 +222,7 @@ export const getAttemptProctoring = createServerFn({ method: "POST" })
     if (!isTeacher && !isStudent) throw new Error("Not authorized");
 
     const { data: prof } = await supabase
-      .from("profiles").select("id, full_name, email").eq("id", a.student_id).maybeSingle();
+      .from("profiles").select("id, full_name, email, student_id").eq("id", a.student_id).maybeSingle();
 
     const { data: snaps } = await supabase
       .from("proctoring_snapshots")

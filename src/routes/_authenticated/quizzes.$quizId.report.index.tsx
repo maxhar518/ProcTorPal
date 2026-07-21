@@ -47,17 +47,19 @@ function ReportPage() {
       const matchesSearch =
         !q ||
         (r.full_name ?? "").toLowerCase().includes(q) ||
-        (r.email ?? "").toLowerCase().includes(q);
+        (r.email ?? "").toLowerCase().includes(q) ||
+        (r.student_id_value ?? "").toLowerCase().includes(q);
       return matchesBand && matchesSearch;
     });
   }, [data, search, band]);
 
   const exportCsv = () => {
-    const header = ["Student", "Email", "Status", "Score", "Risk score", "Risk band", "Critical events", "Started", "Submitted"];
+    const header = ["Student", "Student ID", "Email", "Status", "Score", "Risk score", "Risk band", "Critical events", "Started", "Submitted"];
     const lines = [header.join(",")];
     rows.forEach((r) => {
       lines.push([
         JSON.stringify(r.full_name ?? ""),
+        JSON.stringify(r.student_id_value ?? ""),
         JSON.stringify(r.email ?? ""),
         r.status,
         r.score != null && r.max_score != null ? `${r.score}/${r.max_score}` : "",
@@ -99,7 +101,7 @@ function ReportPage() {
             <CardTitle>Attempts</CardTitle>
             <CardDescription>{rows.length} of {data.rows.length} shown</CardDescription>
             <div className="mt-2 flex flex-wrap items-center gap-2">
-              <Input placeholder="Search name or email" value={search} onChange={(e) => setSearch(e.target.value)} className="max-w-xs" />
+              <Input placeholder="Search name, email, or student ID" value={search} onChange={(e) => setSearch(e.target.value)} className="max-w-xs" />
               <Select value={band} onValueChange={(v) => setBand(v as any)}>
                 <SelectTrigger className="w-44"><SelectValue /></SelectTrigger>
                 <SelectContent>
@@ -131,7 +133,8 @@ function ReportPage() {
                   <TableRow key={r.attempt_id}>
                     <TableCell>
                       <div className="font-medium">{r.full_name || "—"}</div>
-                      <div className="text-xs text-muted-foreground">{r.email}</div>
+                      <div className="text-xs text-muted-foreground">{r.email || "—"}</div>
+                      <div className="text-[11px] text-muted-foreground">ID: {r.student_id_value || "—"}</div>
                     </TableCell>
                     <TableCell><Badge variant="outline">{r.status}</Badge></TableCell>
                     <TableCell>{r.score != null && r.max_score != null ? `${r.score}/${r.max_score}` : "—"}</TableCell>

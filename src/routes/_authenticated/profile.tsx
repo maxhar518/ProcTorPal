@@ -21,6 +21,12 @@ export const Route = createFileRoute("/_authenticated/profile")({
   ),
 });
 
+const STUDENT_ID_PATTERN = /^[A-Z]{3}-\d{2}[A-Z]-\d{3}$/i;
+
+function normalizeStudentId(value: string) {
+  return value.replace(/\s+/g, "").toUpperCase();
+}
+
 type FormState = {
   full_name: string;
   student_id: string;
@@ -170,7 +176,18 @@ function ProfilePage() {
           className="mt-6"
           onSubmit={(e) => {
             e.preventDefault();
-            mutation.mutate(form);
+            const normalizedStudentId = role === "student" ? normalizeStudentId(form.student_id) : form.student_id;
+            if (role === "student") {
+              if (!normalizedStudentId) {
+                toast.error("Student ID is required.");
+                return;
+              }
+              if (!STUDENT_ID_PATTERN.test(normalizedStudentId)) {
+                toast.error("Student ID must use the format ABC-00A-000.");
+                return;
+              }
+            }
+            mutation.mutate({ ...form, student_id: normalizedStudentId });
           }}
         >
           <Card>
@@ -207,9 +224,11 @@ function ProfilePage() {
                     <Input
                       id="student_id"
                       value={form.student_id}
-                      onChange={(e) => setForm({ ...form, student_id: e.target.value })}
+                      onChange={(e) => setForm({ ...form, student_id: normalizeStudentId(e.target.value) })}
                       maxLength={60}
+                      placeholder="ABC-00A-000"
                     />
+                    <p className="text-xs text-muted-foreground">Use the format ABC-00A-000.</p>
                   </div>
                   <div className="space-y-2">
                     <Label htmlFor="section">Section</Label>

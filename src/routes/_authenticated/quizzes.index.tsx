@@ -112,12 +112,16 @@ function QuizzesPage() {
             <h1 className="text-2xl font-semibold">My quizzes</h1>
             <p className="text-sm text-muted-foreground">Create, manage and share your quizzes.</p>
           </div>
-          <Dialog open={isCreateOpen} onOpenChange={setIsCreateOpen}>
-            <DialogTrigger asChild>
-              <Button disabled={createM.isPending}>
-                <Plus className="mr-1 h-4 w-4" /> New quiz
-              </Button>
-            </DialogTrigger>
+          <div className="flex items-center gap-2">
+            <Button asChild variant="outline">
+              <Link to="/quiz-bank">Quiz Bank</Link>
+            </Button>
+            <Dialog open={isCreateOpen} onOpenChange={setIsCreateOpen}>
+              <DialogTrigger asChild>
+                <Button disabled={createM.isPending}>
+                  <Plus className="mr-1 h-4 w-4" /> New quiz
+                </Button>
+              </DialogTrigger>
             <DialogContent>
               <DialogHeader>
                 <DialogTitle>New quiz</DialogTitle>
@@ -136,7 +140,8 @@ function QuizzesPage() {
                 <Button onClick={() => createM.mutate()} disabled={createM.isPending}>{createM.isPending ? "Creating..." : "Create quiz"}</Button>
               </DialogFooter>
             </DialogContent>
-          </Dialog>
+            </Dialog>
+          </div>
         </div>
 
         {(!data?.quizzes || data.quizzes.length === 0) ? (

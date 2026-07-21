@@ -109,12 +109,18 @@ function StudentCards() {
 
 function TeacherCards() {
   return (
-    <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+    <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-5">
       <DashCard
         icon={<ClipboardList className="h-5 w-5 text-primary" />}
         title="Quizzes"
         description="Create and manage your quizzes."
         cta={<Button asChild size="sm"><Link to="/quizzes">Manage</Link></Button>}
+      />
+      <DashCard
+        icon={<BookOpen className="h-5 w-5 text-primary" />}
+        title="Quiz Bank"
+        description="Browse bank questions, build quizzes, and generate versions."
+        cta={<Button asChild size="sm" variant="outline"><Link to="/quiz-bank">Open bank</Link></Button>}
       />
       <DashCard
         icon={<Users className="h-5 w-5 text-primary" />}

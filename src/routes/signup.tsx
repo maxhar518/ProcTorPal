@@ -8,6 +8,12 @@ import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { toast } from "sonner";
 import { AuthShell } from "./login";
 
+const STUDENT_ID_PATTERN = /^[A-Z]{3}-\d{2}[A-Z]-\d{3}$/i;
+
+function normalizeStudentId(value: string) {
+  return value.replace(/\s+/g, "").toUpperCase();
+}
+
 export const Route = createFileRoute("/signup")({
   head: () => ({ meta: [{ title: "Sign up — ProctorAI" }] }),
   component: SignupPage,
@@ -18,6 +24,7 @@ function SignupPage() {
   const [fullName, setFullName] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [studentId, setStudentId] = useState("");
   const [role, setRole] = useState<"student" | "teacher">("student");
   const [loading, setLoading] = useState(false);
 
@@ -27,13 +34,26 @@ function SignupPage() {
       toast.error("Password must be at least 6 characters.");
       return;
     }
+
+    const normalizedStudentId = role === "student" ? normalizeStudentId(studentId) : null;
+    if (role === "student") {
+      if (!normalizedStudentId) {
+        toast.error("Student ID is required for student accounts.");
+        return;
+      }
+      if (!STUDENT_ID_PATTERN.test(normalizedStudentId)) {
+        toast.error("Student ID must use the format ABC-00A-000.");
+        return;
+      }
+    }
+
     setLoading(true);
     const { data, error } = await supabase.auth.signUp({
       email,
       password,
       options: {
         emailRedirectTo: window.location.origin,
-        data: { full_name: fullName, role },
+        data: { full_name: fullName, role, student_id: normalizedStudentId },
       },
     });
     if (error) {
@@ -96,6 +116,19 @@ function SignupPage() {
           />
           <p className="text-xs text-muted-foreground">At least 6 characters.</p>
         </div>
+        {role === "student" && (
+          <div className="space-y-2">
+            <Label htmlFor="studentId">Student ID</Label>
+            <Input
+              id="studentId"
+              required
+              placeholder="ABC-00A-000"
+              value={studentId}
+              onChange={(e) => setStudentId(normalizeStudentId(e.target.value))}
+            />
+            <p className="text-xs text-muted-foreground">Use the format ABC-00A-000.</p>
+          </div>
+        )}
         <div className="space-y-2">
           <Label>I am a…</Label>
           <RadioGroup

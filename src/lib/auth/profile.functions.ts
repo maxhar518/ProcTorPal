@@ -38,9 +38,13 @@ export const updateMyProfile = createServerFn({ method: "POST" })
   .inputValidator((input: unknown) => updateSchema.parse(input))
   .handler(async ({ data, context }) => {
     const { supabase, userId } = context;
+    const payload = {
+      ...data,
+      student_id: data.student_id ? data.student_id.toUpperCase() : data.student_id,
+    };
     const { data: updated, error } = await supabase
       .from("profiles")
-      .update(data)
+      .update(payload)
       .eq("id", userId)
       .select()
       .maybeSingle();

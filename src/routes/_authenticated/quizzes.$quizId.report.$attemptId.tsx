@@ -71,6 +71,7 @@ function AttemptDetailPage() {
           <div>
             <h1 className="text-2xl font-semibold">{student?.full_name || student?.email || "Student"}</h1>
             <p className="text-sm text-muted-foreground">
+              {student?.student_id ? <>ID {student.student_id} · </> : null}
               Started {new Date(attempt.started_at).toLocaleString()}
               {attempt.submitted_at && <> · Submitted {new Date(attempt.submitted_at).toLocaleString()}</>}
             </p>

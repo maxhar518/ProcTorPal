@@ -19,17 +19,45 @@ export const Route = createFileRoute("/login")({
   component: LoginPage,
 });
 
+const STUDENT_ID_PATTERN = /^[A-Z]{3}-\d{2}[A-Z]-\d{3}$/i;
+
 function LoginPage() {
   const navigate = useNavigate();
   const { redirect } = useSearch({ from: "/login" });
-  const [email, setEmail] = useState("");
+  const [identifier, setIdentifier] = useState("");
   const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
 
   async function onSubmit(e: FormEvent) {
     e.preventDefault();
+    const trimmedIdentifier = identifier.trim();
+    if (!trimmedIdentifier) {
+      toast.error("Please enter your email or student ID.");
+      return;
+    }
+
     setLoading(true);
-    const { error } = await supabase.auth.signInWithPassword({ email, password });
+
+    let emailToUse = trimmedIdentifier;
+    if (STUDENT_ID_PATTERN.test(trimmedIdentifier.toUpperCase())) {
+      const { data: profileData, error: profileError } = await supabase
+        .from("profiles")
+        .select("email")
+        .eq("student_id", trimmedIdentifier.toUpperCase())
+        .maybeSingle();
+
+      if (profileError) {
+        setLoading(false);
+        toast.error(profileError.message);
+        return;
+      }
+
+      if (profileData?.email) {
+        emailToUse = profileData.email;
+      }
+    }
+
+    const { error } = await supabase.auth.signInWithPassword({ email: emailToUse, password });
     setLoading(false);
     if (error) {
       toast.error(error.message);
@@ -43,14 +71,14 @@ function LoginPage() {
     <AuthShell title="Log in to ProctorAI" subtitle="Welcome back.">
       <form onSubmit={onSubmit} className="space-y-4">
         <div className="space-y-2">
-          <Label htmlFor="email">Email</Label>
+          <Label htmlFor="identifier">Email or Student ID</Label>
           <Input
-            id="email"
-            type="email"
+            id="identifier"
             required
             autoComplete="email"
-            value={email}
-            onChange={(e) => setEmail(e.target.value)}
+            placeholder="teacher@example.com or ABC-00A-000"
+            value={identifier}
+            onChange={(e) => setIdentifier(e.target.value)}
           />
         </div>
         <div className="space-y-2">
