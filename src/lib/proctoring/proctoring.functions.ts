@@ -239,6 +239,9 @@ export const getAttemptProctoring = createServerFn({ method: "POST" })
       })
     );
 
+    // Extract verification snapshot as first-class property
+    const verificationSnapshot = snapshots.find((s) => s.kind === "verification") ?? null;
+
     const { data: events } = await supabase
       .from("proctoring_events")
       .select("id, event_type, severity, details, occurred_at")
@@ -264,6 +267,7 @@ export const getAttemptProctoring = createServerFn({ method: "POST" })
       attempt: a,
       quiz: quiz ? { id: quiz.id, title: quiz.title } : null,
       student: prof,
+      verificationSnapshot,
       snapshots,
       events: events ?? [],
       risk: r,

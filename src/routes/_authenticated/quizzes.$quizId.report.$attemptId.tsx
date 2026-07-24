@@ -46,7 +46,7 @@ function AttemptDetailPage() {
     return <div className="flex min-h-screen items-center justify-center"><Loader2 className="h-6 w-6 animate-spin text-muted-foreground" /></div>;
   }
   if (!data) return null;
-  const { attempt, student, snapshots, events, risk, counts } = data;
+  const { attempt, student, verificationSnapshot, snapshots, events, risk, counts } = data;
 
   const highlights = [
     { label: "Face not detected", key: "face_missing" },
@@ -96,11 +96,62 @@ function AttemptDetailPage() {
           ))}
         </div>
 
+        {verificationSnapshot && (
+          <Card className="mb-6 border-blue-200 dark:border-blue-900 bg-blue-50 dark:bg-blue-950/30">
+            <CardHeader>
+              <CardTitle className="text-sm text-blue-700 dark:text-blue-300">Attendance Verification</CardTitle>
+              <CardDescription>First snapshot captured at quiz start</CardDescription>
+            </CardHeader>
+            <CardContent>
+              <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:gap-4">
+                <div className="flex-shrink-0">
+                  {verificationSnapshot.signed_url ? (
+                    <img src={verificationSnapshot.signed_url} alt="verification snapshot" className="h-32 w-40 rounded-md border border-border object-cover shadow-sm" />
+                  ) : (
+                    <div className="h-32 w-40 rounded-md border border-border bg-muted" />
+                  )}
+                </div>
+                <div className="flex-1 space-y-2">
+                  <div>
+                    <p className="text-xs font-medium text-muted-foreground">Captured at</p>
+                    <p className="text-sm">{new Date(verificationSnapshot.captured_at).toLocaleString()}</p>
+                  </div>
+                  <div>
+                    <p className="text-xs font-medium text-muted-foreground">Face status</p>
+                    <p className="text-sm">
+                      {verificationSnapshot.face_status === "ok" && (
+                        <span className="inline-flex items-center gap-1 rounded-full bg-green-100 px-2 py-1 text-xs font-medium text-green-700 dark:bg-green-900/30 dark:text-green-300">
+                          ✓ Verified
+                        </span>
+                      )}
+                      {verificationSnapshot.face_status === "missing" && (
+                        <span className="inline-flex items-center gap-1 rounded-full bg-yellow-100 px-2 py-1 text-xs font-medium text-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-300">
+                          ⚠ Face not detected
+                        </span>
+                      )}
+                      {verificationSnapshot.face_status === "multiple" && (
+                        <span className="inline-flex items-center gap-1 rounded-full bg-red-100 px-2 py-1 text-xs font-medium text-red-700 dark:bg-red-900/30 dark:text-red-300">
+                          ✕ Multiple faces
+                        </span>
+                      )}
+                      {verificationSnapshot.face_status === "unknown" && (
+                        <span className="inline-flex items-center gap-1 rounded-full bg-gray-100 px-2 py-1 text-xs font-medium text-gray-700 dark:bg-gray-900/30 dark:text-gray-300">
+                          ? Unknown
+                        </span>
+                      )}
+                    </p>
+                  </div>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+        )}
+
         <div className="grid gap-6 lg:grid-cols-2">
           <Card>
             <CardHeader>
-              <CardTitle>Snapshots</CardTitle>
-              <CardDescription>{snapshots.length} captures · click any image to enlarge</CardDescription>
+              <CardTitle>Activity snapshots</CardTitle>
+              <CardDescription>{snapshots.length} periodic captures · click any image to enlarge</CardDescription>
             </CardHeader>
             <CardContent>
               {snapshots.length === 0 ? (
