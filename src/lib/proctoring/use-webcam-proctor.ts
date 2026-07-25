@@ -36,6 +36,7 @@ export function useWebcamProctor(
   const [lastFace, setLastFace] = useState<FaceStatus>("unknown");
   const [lastObject, setLastObject] = useState<ObjectStatus>("unknown");
   const [isMobile, setIsMobile] = useState(false);
+  const [verificationCaptured, setVerificationCaptured] = useState(false);
 
   const upload = useServerFn(uploadSnapshot);
   const log = useServerFn(logEvents);
@@ -140,11 +141,82 @@ export function useWebcamProctor(
   );
 
   const attachVideoToStream = useCallback(async () => {
-    if (!videoRef.current || !streamRef.current) return;
-    if (videoRef.current.srcObject !== streamRef.current) {
-      videoRef.current.srcObject = streamRef.current;
-      await videoRef.current.play().catch(() => {});
+    const video = videoRef.current;
+    const stream = streamRef.current;
+    
+    if (!video) {
+      console.warn("[attachVideoToStream] Video element not yet mounted - will retry when component mounts");
+      return;
     }
+    
+    if (!stream) {
+      console.error("[attachVideoToStream] Missing stream ref", { hasStream: !!stream });
+      return;
+    }
+    
+    console.log("[attachVideoToStream] Starting attachment", { 
+      videoElement: !!video,
+      streamTracks: stream.getTracks().length,
+      videoTracks: stream.getVideoTracks().length,
+      currentSrcObject: video.srcObject ? "exists" : "null"
+    });
+    
+    // Attach stream to video element
+    if (video.srcObject !== stream) {
+      video.srcObject = stream;
+      console.log("[attachVideoToStream] Stream attached to video element");
+    }
+    
+    // Try to play the video
+    try {
+      const playPromise = video.play();
+      if (playPromise) {
+        await playPromise;
+        console.log("[attachVideoToStream] Video play() succeeded");
+      }
+    } catch (e) {
+      console.error("[attachVideoToStream] play() failed:", e);
+      // Continue anyway - video might still work via autoplay attribute
+    }
+    
+    // Wait for video to load metadata (up to 4 seconds)
+    return new Promise<void>((resolve) => {
+      const timeout = setTimeout(() => {
+        console.warn("[attachVideoToStream] Metadata load timeout after 4s", {
+          readyState: video.readyState,
+          videoWidth: video.videoWidth,
+          videoHeight: video.videoHeight,
+          paused: video.paused,
+          srcObject: !!video.srcObject
+        });
+        resolve();
+      }, 4000);
+      
+      const onLoadedMetadata = () => {
+        clearTimeout(timeout);
+        video.removeEventListener("loadedmetadata", onLoadedMetadata);
+        console.log("[attachVideoToStream] loadedmetadata event fired", {
+          readyState: video.readyState,
+          videoWidth: video.videoWidth,
+          videoHeight: video.videoHeight,
+          paused: video.paused
+        });
+        resolve();
+      };
+      
+      const onPlay = () => {
+        console.log("[attachVideoToStream] play event fired");
+      };
+      
+      video.addEventListener("loadedmetadata", onLoadedMetadata);
+      video.addEventListener("play", onPlay);
+      
+      // If already loaded, fire immediately
+      if (video.readyState >= 1) {
+        console.log("[attachVideoToStream] Video already has metadata");
+        onLoadedMetadata();
+      }
+    });
   }, []);
 
   const stop = useCallback((resetStatus = true) => {
@@ -160,6 +232,95 @@ export function useWebcamProctor(
       setStatus("idle");
     }
   }, []);
+
+  const captureVerification = useCallback(async () => {
+    const video = videoRef.current;
+    if (!video || !attemptId) {
+      return { success: false, error: "Video or attempt ID not available", faceStatus: "unknown" };
+    }
+    
+    console.log("[captureVerification] Starting capture", {
+      videoWidth: video.videoWidth,
+      videoHeight: video.videoHeight,
+      readyState: video.readyState,
+      paused: video.paused,
+      srcObject: !!video.srcObject
+    });
+    
+    // Wait for video to be ready (up to 2 seconds)
+    let attempts = 0;
+    while ((video.readyState < 2 || video.videoWidth === 0) && attempts < 20) {
+      await new Promise(r => setTimeout(r, 100));
+      attempts++;
+    }
+    
+    if (video.readyState < 2 || video.videoWidth === 0) {
+      const diagnostics = {
+        readyState: video.readyState,
+        videoWidth: video.videoWidth,
+        videoHeight: video.videoHeight,
+        paused: video.paused,
+        srcObject: !!video.srcObject,
+        srcObjectTracks: video.srcObject?.getTracks?.().length ?? 0,
+        attempts
+      };
+      console.error("[captureVerification] Video not ready after waiting", diagnostics);
+      logEvent("capture_video_not_ready", "warn", diagnostics);
+      return { success: false, error: "Camera feed not ready. Please ensure your camera is enabled and try again.", faceStatus: "unknown" };
+    }
+
+    const w = 480;
+    const h = Math.round((video.videoHeight / video.videoWidth) * w) || 360;
+    if (!canvasRef.current) canvasRef.current = document.createElement("canvas");
+    const canvas = canvasRef.current;
+    canvas.width = w;
+    canvas.height = h;
+    const ctx = canvas.getContext("2d");
+    if (!ctx) {
+      return { success: false, error: "Could not access canvas context", faceStatus: "unknown" };
+    }
+    
+    try {
+      ctx.drawImage(video, 0, 0, w, h);
+      console.log("[captureVerification] Image drawn to canvas successfully");
+    } catch (e) {
+      console.error("[captureVerification] Failed to draw image", e);
+      return { success: false, error: "Could not capture frame from camera", faceStatus: "unknown" };
+    }
+
+    let faceStatus: FaceStatus = "unknown";
+    try {
+      faceStatus = await detectFaces(canvas);
+    } catch (e) {
+      // Face detection might not be loaded yet, but we can still capture
+      console.warn("[captureVerification] Face detection failed", e);
+      faceStatus = "unknown";
+    }
+    
+    setLastFace(faceStatus);
+
+    const dataUrl = canvas.toDataURL("image/jpeg", 0.6);
+    const base64 = dataUrl.split(",")[1] ?? "";
+    
+    if (!base64 || base64.length < 100) {
+      console.error("[captureVerification] Image encoding failed", { base64Length: base64?.length ?? 0 });
+      return { success: false, error: "Failed to encode image from camera", faceStatus };
+    }
+    
+    console.log("[captureVerification] Image captured and encoded, uploading...");
+    try {
+      await upload({ data: { attemptId, kind: "verification", imageBase64: base64, faceStatus } });
+      setVerificationCaptured(true);
+      logEvent("snapshot_uploaded", "info", { kind: "verification" });
+      console.log("[captureVerification] Upload successful");
+      return { success: true, faceStatus };
+    } catch (e) {
+      const errorMsg = e instanceof Error ? e.message : String(e);
+      console.error("[captureVerification] Upload failed", errorMsg);
+      logEvent("snapshot_failed", "warn", { kind: "verification", error: errorMsg });
+      return { success: false, error: `Upload failed: ${errorMsg}`, faceStatus };
+    }
+  }, [attemptId, detectFaces, logEvent, upload]);
 
   const requestAccess = useCallback(async () => {
     if (!attemptId) {
@@ -223,15 +384,8 @@ export function useWebcamProctor(
         });
       });
 
-      window.setTimeout(async () => {
-        if (verificationSentRef.current) return;
-        verificationSentRef.current = true;
-        const start = Date.now();
-        while (!detectorRef.current && Date.now() - start < 1500) {
-          await new Promise((r) => setTimeout(r, 100));
-        }
-        await captureAndUpload("verification");
-      }, 1200);
+      // Manual verification capture - user will click button to capture
+      // No auto-capture to ensure explicit verification
 
       intervalIdRef.current = window.setInterval(() => {
         const track = streamRef.current?.getVideoTracks()[0];
@@ -248,7 +402,7 @@ export function useWebcamProctor(
       logEvent("camera_denied", "critical", { message: err?.message ?? "denied" });
       throw err;
     }
-  }, [attemptId, attachVideoToStream, captureAndUpload, intervalMs, loadScript, logEvent, stop, status]);
+  }, [attemptId, attachVideoToStream, captureAndUpload, captureVerification, intervalMs, loadScript, logEvent, stop, status]);
 
   useEffect(() => {
     if (videoRef.current && streamRef.current) {
@@ -256,9 +410,28 @@ export function useWebcamProctor(
     }
   }, [attachVideoToStream, status]);
 
+  const reattachStream = useCallback(async () => {
+    console.log("[reattachStream] Called - attempting to re-attach stream");
+    if (!videoRef.current) {
+      console.error("[reattachStream] Video element not found");
+      return;
+    }
+    if (!streamRef.current) {
+      console.error("[reattachStream] Stream not available");
+      return;
+    }
+    console.log("[reattachStream] Stream and video element found, attaching...");
+    try {
+      await attachVideoToStream();
+      console.log("[reattachStream] Successfully re-attached stream");
+    } catch (e) {
+      console.error("[reattachStream] Failed to re-attach stream:", e);
+    }
+  }, [attachVideoToStream]);
+
   useEffect(() => {
     return () => stop(false);
   }, [stop]);
 
-  return { videoRef, status, lastFace, lastObject, isMobile, requestAccess, stop };
+  return { videoRef, status, lastFace, lastObject, isMobile, verificationCaptured, requestAccess, captureVerification, stop, reattachStream };
 }

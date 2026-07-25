@@ -171,33 +171,51 @@ export const listQuizAttemptsWithRisk = createServerFn({ method: "POST" })
       (profs ?? []).forEach((p) => profMap.set(p.id, { full_name: p.full_name, email: p.email }));
     }
 
-    const rows = await Promise.all(
-      (attempts ?? []).map(async (a) => {
-        const { data: risk } = await supabase.rpc("attempt_risk_score", { _attempt_id: a.id });
+    const attemptIds = (attempts ?? []).map((a) => a.id);
+
+    // Batch-fetch critical event counts in a single query instead of N queries
+    const critCountMap = new Map<string, number>();
+    if (attemptIds.length > 0) {
+      const { data: critEvents } = await supabase
+        .from("proctoring_events")
+        .select("attempt_id")
+        .in("attempt_id", attemptIds)
+        .eq("severity", "critical");
+      (critEvents ?? []).forEach((e) => {
+        critCountMap.set(e.attempt_id, (critCountMap.get(e.attempt_id) ?? 0) + 1);
+      });
+    }
+
+    // Risk scores still need individual RPC calls (Supabase RPC doesn't support batch),
+    // but run them all in parallel
+    const riskResults = await Promise.all(
+      attemptIds.map(async (id) => {
+        const { data: risk } = await supabase.rpc("attempt_risk_score", { _attempt_id: id });
         const r = Array.isArray(risk) && risk[0] ? risk[0] : { risk_score: 0, risk_band: "low" };
-        const { count: critCount } = await supabase
-          .from("proctoring_events")
-          .select("*", { count: "exact", head: true })
-          .eq("attempt_id", a.id)
-          .eq("severity", "critical");
-        const prof = profMap.get(a.student_id) ?? { full_name: null, email: null };
-        return {
-          attempt_id: a.id,
-          student_id: a.student_id,
-          full_name: prof.full_name,
-          email: prof.email,
-          status: a.status,
-          score: a.score,
-          max_score: a.max_score,
-          started_at: a.started_at,
-          submitted_at: a.submitted_at,
-          consent_given_at: a.consent_given_at,
-          risk_score: r.risk_score,
-          risk_band: r.risk_band,
-          critical_events: critCount ?? 0,
-        };
+        return { id, risk_score: r.risk_score, risk_band: r.risk_band };
       })
     );
+    const riskMap = new Map(riskResults.map((r) => [r.id, r]));
+
+    const rows = (attempts ?? []).map((a) => {
+      const r = riskMap.get(a.id) ?? { risk_score: 0, risk_band: "low" };
+      const prof = profMap.get(a.student_id) ?? { full_name: null, email: null };
+      return {
+        attempt_id: a.id,
+        student_id: a.student_id,
+        full_name: prof.full_name,
+        email: prof.email,
+        status: a.status,
+        score: a.score,
+        max_score: a.max_score,
+        started_at: a.started_at,
+        submitted_at: a.submitted_at,
+        consent_given_at: a.consent_given_at,
+        risk_score: r.risk_score,
+        risk_band: r.risk_band,
+        critical_events: critCountMap.get(a.id) ?? 0,
+      };
+    });
     return { quiz: { id: quiz.id, title: quiz.title }, rows };
   });
 

@@ -19,6 +19,8 @@ export function ProctoredSession({
   children: ReactNode;
 }) {
   const [consented, setConsented] = useState(false);
+  const [verificationCaptured, setVerificationCaptured] = useState(false);
+  const [capturingVerification, setCapturingVerification] = useState(false);
   const [accepted, setAccepted] = useState(false);
   const [starting, setStarting] = useState(false);
   const consent = useServerFn(recordConsent);
@@ -47,14 +49,56 @@ export function ProctoredSession({
     }
   };
 
+  // Ensure video displays when verification screen mounts
+  useEffect(() => {
+    if (!accepted || verificationCaptured) return;
+    
+    console.log("[ProctoredSession] Verification screen mounted, ensuring video is attached");
+    
+    // Give React time to mount the video element, then re-attach stream
+    const timeout = setTimeout(() => {
+      console.log("[ProctoredSession] Calling reattachStream");
+      cam.reattachStream?.();
+    }, 100);
+    
+    return () => clearTimeout(timeout);
+  }, [accepted, verificationCaptured, cam]);
+
+  const handleCaptureVerification = async () => {
+    setCapturingVerification(true);
+    try {
+      const result = await cam.captureVerification();
+      if (result?.success) {
+        setVerificationCaptured(true);
+        toast.success("Verification image captured successfully!");
+      } else {
+        const errorMsg = result?.error ?? "Failed to capture verification image. Please try again.";
+        toast.error(errorMsg);
+      }
+    } catch (error: any) {
+      toast.error(error?.message ?? "Failed to capture verification image. Please try again.");
+    } finally {
+      setCapturingVerification(false);
+    }
+  };
+
   // Request fullscreen when accepted
   useEffect(() => {
     if (accepted) {
       const enterFullscreen = async () => {
         try {
-          await document.documentElement.requestFullscreen();
-        } catch (error) {
-          toast.warning("Fullscreen could not be entered automatically. Use the button at the top of the page.");
+          // Wait a bit to ensure user gesture context isn't completely lost
+          await new Promise(resolve => setTimeout(resolve, 100));
+          if (document.fullscreenElement === null) {
+            await document.documentElement.requestFullscreen();
+            console.log("[ProctoredSession] Entered fullscreen");
+          }
+        } catch (error: any) {
+          // Silently ignore - fullscreen requires direct user gesture
+          // User can still use the quiz, just not in fullscreen
+          if (error?.name !== "NotAllowedError") {
+            console.warn("[ProctoredSession] Fullscreen request failed:", error?.message);
+          }
         }
       };
       enterFullscreen();
@@ -122,12 +166,87 @@ export function ProctoredSession({
     );
   }
 
+  // Verification capture screen
+  if (!verificationCaptured) {
+    return (
+      <div className="mx-auto max-w-2xl px-6 py-10">
+        <Card>
+          <CardHeader>
+            <div className="mb-2 flex items-center gap-2 text-primary"><Video className="h-5 w-5" /> <span className="text-sm font-medium">Identity verification</span></div>
+            <CardTitle>Capture your verification image</CardTitle>
+            <CardDescription>Please position yourself clearly in the camera and click the button to capture your photo.</CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <div className="flex flex-col gap-4">
+              {/* Live camera feed */}
+              <div className="relative overflow-hidden rounded-lg border-2 border-primary/20 bg-black">
+                <video
+                  ref={cam.videoRef}
+                  muted
+                  autoPlay
+                  playsInline
+                  style={{ 
+                    objectFit: "contain",
+                    display: "block",
+                    width: "100%",
+                    height: "100%"
+                  }}
+                  className="w-full aspect-video"
+                />
+              </div>
+
+              {/* Camera status */}
+              <div className="rounded-lg bg-muted p-3 text-sm">
+                <div className="flex items-center gap-2">
+                  <span className={`inline-block h-2 w-2 rounded-full ${cam.status === "ready" ? "bg-green-500" : cam.status === "denied" ? "bg-red-500" : "bg-yellow-500"}`} />
+                  <span>Camera: <b>{cam.status}</b></span>
+                  {cam.lastFace !== "unknown" && <span className="ml-2">Face: <b>{cam.lastFace}</b></span>}
+                </div>
+                {cam.status !== "ready" && (
+                  <p className="mt-2 text-xs text-muted-foreground">Initializing camera... please wait</p>
+                )}
+              </div>
+
+              {/* Capture button */}
+              <Button
+                size="lg"
+                onClick={handleCaptureVerification}
+                disabled={cam.status !== "ready" || capturingVerification}
+                className="w-full"
+              >
+                {capturingVerification ? "Capturing..." : cam.status !== "ready" ? "Waiting for camera..." : "Capture Verification Image"}
+              </Button>
+
+              {/* Instructions */}
+              <Alert>
+                <AlertTitle>Tips for good photo</AlertTitle>
+                <AlertDescription className="text-xs space-y-1">
+                  <div>• Make sure your face is clearly visible and well-lit</div>
+                  <div>• Position yourself facing the camera directly</div>
+                  <div>• Remove any objects blocking your face</div>
+                </AlertDescription>
+              </Alert>
+            </div>
+          </CardContent>
+        </Card>
+      </div>
+    );
+  }
+
   return <ProctoredRunner attemptId={attemptId} cam={cam}>{children}</ProctoredRunner>;
 }
 
 function ProctoredRunner({ attemptId, cam, children }: { attemptId: string; cam: ReturnType<typeof useWebcamProctor>; children: ReactNode }) {
   const lockdown = useLockdown(attemptId, true);
   const [showViolationAlert, setShowViolationAlert] = useState(false);
+
+  // Reattach stream when ProctoredRunner mounts (verification screen's video just unmounted)
+  useEffect(() => {
+    const timeout = setTimeout(() => {
+      cam.reattachStream?.();
+    }, 100);
+    return () => clearTimeout(timeout);
+  }, []);
 
   useEffect(() => {
     const hasViolation = cam.lastFace === "multiple" || cam.lastFace === "missing" || cam.lastObject === "phone";
@@ -241,7 +360,9 @@ function ProctoredRunner({ attemptId, cam, children }: { attemptId: string; cam:
         ref={cam.videoRef}
         muted
         playsInline
-        className="fixed bottom-3 right-3 z-40 h-24 w-32 rounded-md border border-border bg-black object-cover shadow-md"
+        autoPlay
+        style={{ objectFit: "cover" }}
+        className="fixed bottom-3 right-3 z-40 h-24 w-32 rounded-md border-2 border-primary shadow-md bg-black"
       />
 
       {children}
