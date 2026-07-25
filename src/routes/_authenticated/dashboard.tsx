@@ -132,7 +132,7 @@ function TeacherCards() {
         icon={<BarChart3 className="h-5 w-5 text-primary" />}
         title="Reports"
         description="Performance and proctoring reports."
-        cta={<EmptyCta label="Coming soon" />}
+        cta={<Button asChild size="sm" variant="outline"><Link to="/reports">View reports</Link></Button>}
       />
     </div>
   );

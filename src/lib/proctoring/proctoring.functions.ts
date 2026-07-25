@@ -270,3 +270,86 @@ export const getAttemptProctoring = createServerFn({ method: "POST" })
       counts,
     };
   });
+
+export const getTeacherReportOverview = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .validator(() => ({}))
+  .handler(async ({ context }) => {
+    const { supabase, userId } = context;
+
+    const { data: quizzes, error: qErr } = await supabase
+      .from("quizzes")
+      .select("id, title, status, created_at")
+      .eq("teacher_id", userId)
+      .order("created_at", { ascending: false });
+    if (qErr) throw new Error(qErr.message);
+
+    const quizIds = (quizzes ?? []).map((q) => q.id);
+    if (quizIds.length === 0) return { quizzes: [] };
+
+    const { data: attempts } = await supabase
+      .from("quiz_attempts")
+      .select("id, quiz_id, status, started_at, submitted_at")
+      .in("quiz_id", quizIds);
+
+    const attemptMap = new Map<string, typeof attempts>();
+    (attempts ?? []).forEach((a) => {
+      const list = attemptMap.get(a.quiz_id) ?? [];
+      list.push(a);
+      attemptMap.set(a.quiz_id, list);
+    });
+
+    const allAttemptIds = (attempts ?? []).map((a) => a.id);
+    let critEvents: { attempt_id: string }[] = [];
+    if (allAttemptIds.length > 0) {
+      const { data } = await supabase
+        .from("proctoring_events")
+        .select("attempt_id")
+        .in("attempt_id", allAttemptIds)
+        .eq("severity", "critical");
+      critEvents = data ?? [];
+    }
+    const critMap = new Map<string, number>();
+    critEvents.forEach((e) => {
+      critMap.set(e.attempt_id, (critMap.get(e.attempt_id) ?? 0) + 1);
+    });
+
+    const riskResults = await Promise.all(
+      allAttemptIds.map(async (id) => {
+        const { data: risk } = await supabase.rpc("attempt_risk_score", { _attempt_id: id });
+        const r = Array.isArray(risk) && risk[0] ? risk[0] : { risk_score: 0, risk_band: "low" };
+        return { id, risk_score: r.risk_score, risk_band: r.risk_band };
+      })
+    );
+    const riskMap = new Map(riskResults.map((r) => [r.id, r]));
+
+    const result = (quizzes ?? []).map((q) => {
+      const qAttempts = attemptMap.get(q.id) ?? [];
+      const totalAttempts = qAttempts.length;
+      const completedAttempts = qAttempts.filter((a) => a.status === "completed").length;
+      let highRiskCount = 0;
+      let totalCritical = 0;
+      qAttempts.forEach((a) => {
+        const r = riskMap.get(a.id);
+        if (r?.risk_band === "high") highRiskCount++;
+        totalCritical += critMap.get(a.id) ?? 0;
+      });
+      const latestAttempt = qAttempts.length > 0
+        ? qAttempts.sort((a, b) => new Date(b.started_at).getTime() - new Date(a.started_at).getTime())[0]
+        : null;
+
+      return {
+        quiz_id: q.id,
+        title: q.title,
+        status: q.status,
+        created_at: q.created_at,
+        total_attempts: totalAttempts,
+        completed_attempts: completedAttempts,
+        high_risk_count: highRiskCount,
+        total_critical: totalCritical,
+        latest_attempt_at: latestAttempt?.started_at ?? null,
+      };
+    });
+
+    return { quizzes: result };
+  });
