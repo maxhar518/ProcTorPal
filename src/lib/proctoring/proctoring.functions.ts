@@ -145,6 +145,90 @@ export const uploadSnapshot = createServerFn({ method: "POST" })
   });
 
 // Teacher report functions
+
+export const listAllQuizReportsSummary = createServerFn({ method: "GET" })
+  .middleware([requireSupabaseAuth])
+  .handler(async ({ context }) => {
+    const { supabase, userId } = context;
+    const { data: quizzes, error: qErr } = await supabase
+      .from("quizzes")
+      .select("id, title, status, created_at")
+      .eq("teacher_id", userId)
+      .order("created_at", { ascending: false });
+    if (qErr) throw new Error(qErr.message);
+
+    const quizIds = (quizzes ?? []).map((q) => q.id);
+    if (quizIds.length === 0) return { quizzes: [] };
+
+    const results = await Promise.all(
+      quizIds.map(async (quizId) => {
+        const { data: attempts } = await supabase
+          .from("quiz_attempts")
+          .select("id, status, score, max_score")
+          .eq("quiz_id", quizId);
+        const totalAttempts = (attempts ?? []).length;
+        const completedAttempts = (attempts ?? []).filter((a) => a.status === "completed").length;
+        const avgScore = completedAttempts > 0
+          ? (attempts ?? []).reduce((sum, a) => sum + (a.score ?? 0), 0) / completedAttempts
+          : 0;
+        const avgMaxScore = completedAttempts > 0
+          ? (attempts ?? []).reduce((sum, a) => sum + (a.max_score ?? 0), 0) / completedAttempts
+          : 0;
+
+        const attemptIds = (attempts ?? []).map((a) => a.id);
+        let highRisk = 0;
+        let mediumRisk = 0;
+        let totalCritical = 0;
+
+        if (attemptIds.length > 0) {
+          const { data: critEvents } = await supabase
+            .from("proctoring_events")
+            .select("attempt_id")
+            .in("attempt_id", attemptIds)
+            .eq("severity", "critical");
+          totalCritical = (critEvents ?? []).length;
+
+          const riskResults = await Promise.all(
+            attemptIds.map(async (id) => {
+              const { data: risk } = await supabase.rpc("attempt_risk_score", { _attempt_id: id });
+              const r = Array.isArray(risk) && risk[0] ? risk[0] : { risk_band: "low" };
+              return r.risk_band;
+            })
+          );
+          highRisk = riskResults.filter((b) => b === "high").length;
+          mediumRisk = riskResults.filter((b) => b === "medium").length;
+        }
+
+        return {
+          quizId,
+          totalAttempts,
+          completedAttempts,
+          avgScore: Math.round(avgScore * 10) / 10,
+          avgMaxScore: Math.round(avgMaxScore * 10) / 10,
+          highRisk,
+          mediumRisk,
+          totalCritical,
+        };
+      })
+    );
+
+    const summaryMap = new Map(results.map((r) => [r.quizId, r]));
+    const quizzesWithStats = (quizzes ?? []).map((q) => ({
+      ...q,
+      stats: summaryMap.get(q.id) ?? {
+        totalAttempts: 0,
+        completedAttempts: 0,
+        avgScore: 0,
+        avgMaxScore: 0,
+        highRisk: 0,
+        mediumRisk: 0,
+        totalCritical: 0,
+      },
+    }));
+
+    return { quizzes: quizzesWithStats };
+  });
+
 export const listQuizAttemptsWithRisk = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .inputValidator((i: unknown) => z.object({ quizId: z.string().uuid() }).parse(i))
