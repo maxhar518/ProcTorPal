@@ -10,7 +10,7 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { Loader2, Download, Eye } from "lucide-react";
+import { Loader2, Download, Eye, ArrowUpDown, ShieldAlert, Users, AlertTriangle, CheckCircle } from "lucide-react";
 import { listQuizAttemptsWithRisk } from "@/lib/proctoring/proctoring.functions";
 
 export const Route = createFileRoute("/_authenticated/quizzes/$quizId/report/")({
@@ -25,6 +25,8 @@ function bandColor(band: string) {
   return "secondary";
 }
 
+type SortKey = "risk_score" | "critical_events" | "score" | "started_at";
+
 function ReportPage() {
   const { quizId } = Route.useParams();
   const { session, loading } = useCurrentUser();
@@ -38,10 +40,24 @@ function ReportPage() {
 
   const [search, setSearch] = useState("");
   const [band, setBand] = useState<"all" | "low" | "medium" | "high">("all");
+  const [sortKey, setSortKey] = useState<SortKey>("risk_score");
+  const [sortAsc, setSortAsc] = useState(false);
+
+  const allRows = data?.rows ?? [];
+
+  const stats = useMemo(() => {
+    const total = allRows.length;
+    const highRisk = allRows.filter((r) => r.risk_band === "high").length;
+    const mediumRisk = allRows.filter((r) => r.risk_band === "medium").length;
+    const totalCritical = allRows.reduce((sum, r) => sum + r.critical_events, 0);
+    const avgScore = total > 0
+      ? allRows.reduce((sum, r) => sum + (r.score ?? 0), 0) / total
+      : 0;
+    return { total, highRisk, mediumRisk, totalCritical, avgScore };
+  }, [allRows]);
 
   const rows = useMemo(() => {
-    const all = data?.rows ?? [];
-    return all.filter((r) => {
+    const filtered = allRows.filter((r) => {
       const matchesBand = band === "all" || r.risk_band === band;
       const q = search.trim().toLowerCase();
       const matchesSearch =
@@ -51,7 +67,49 @@ function ReportPage() {
         (r.student_id_value ?? "").toLowerCase().includes(q);
       return matchesBand && matchesSearch;
     });
-  }, [data, search, band]);
+
+    filtered.sort((a, b) => {
+      let cmp = 0;
+      switch (sortKey) {
+        case "risk_score":
+          cmp = a.risk_score - b.risk_score;
+          break;
+        case "critical_events":
+          cmp = a.critical_events - b.critical_events;
+          break;
+        case "score":
+          cmp = (a.score ?? 0) - (b.score ?? 0);
+          break;
+        case "started_at":
+          cmp = new Date(a.started_at).getTime() - new Date(b.started_at).getTime();
+          break;
+      }
+      return sortAsc ? cmp : -cmp;
+    });
+
+    return filtered;
+  }, [allRows, search, band, sortKey, sortAsc]);
+
+  const toggleSort = (key: SortKey) => {
+    if (sortKey === key) {
+      setSortAsc(!sortAsc);
+    } else {
+      setSortKey(key);
+      setSortAsc(false);
+    }
+  };
+
+  const SortableHead = ({ label, sortField }: { label: string; sortField: SortKey }) => (
+    <TableHead>
+      <button
+        onClick={() => toggleSort(sortField)}
+        className="inline-flex items-center gap-1 hover:text-foreground"
+      >
+        {label}
+        <ArrowUpDown className={`h-3 w-3 ${sortKey === sortField ? "text-foreground" : "text-muted-foreground"}`} />
+      </button>
+    </TableHead>
+  );
 
   const exportCsv = () => {
     const header = ["Student", "Student ID", "Email", "Status", "Score", "Risk score", "Risk band", "Critical events", "Started", "Submitted"];
@@ -96,6 +154,48 @@ function ReportPage() {
           <Button variant="outline" onClick={exportCsv}><Download className="mr-1 h-4 w-4" />Export CSV</Button>
         </div>
 
+        {/* Summary stats */}
+        <div className="mb-6 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+          <Card>
+            <CardHeader className="pb-1 flex flex-row items-center justify-between space-y-0">
+              <CardDescription>Total attempts</CardDescription>
+              <Users className="h-4 w-4 text-muted-foreground" />
+            </CardHeader>
+            <CardContent>
+              <div className="text-2xl font-semibold">{stats.total}</div>
+            </CardContent>
+          </Card>
+          <Card>
+            <CardHeader className="pb-1 flex flex-row items-center justify-between space-y-0">
+              <CardDescription>High risk</CardDescription>
+              <ShieldAlert className="h-4 w-4 text-destructive" />
+            </CardHeader>
+            <CardContent>
+              <div className="text-2xl font-semibold text-destructive">{stats.highRisk}</div>
+              {stats.total > 0 && <p className="text-xs text-muted-foreground">{Math.round((stats.highRisk / stats.total) * 100)}% of attempts</p>}
+            </CardContent>
+          </Card>
+          <Card>
+            <CardHeader className="pb-1 flex flex-row items-center justify-between space-y-0">
+              <CardDescription>Medium risk</CardDescription>
+              <AlertTriangle className="h-4 w-4 text-yellow-500" />
+            </CardHeader>
+            <CardContent>
+              <div className="text-2xl font-semibold">{stats.mediumRisk}</div>
+              {stats.total > 0 && <p className="text-xs text-muted-foreground">{Math.round((stats.mediumRisk / stats.total) * 100)}% of attempts</p>}
+            </CardContent>
+          </Card>
+          <Card>
+            <CardHeader className="pb-1 flex flex-row items-center justify-between space-y-0">
+              <CardDescription>Total critical events</CardDescription>
+              <CheckCircle className="h-4 w-4 text-muted-foreground" />
+            </CardHeader>
+            <CardContent>
+              <div className="text-2xl font-semibold">{stats.totalCritical}</div>
+            </CardContent>
+          </Card>
+        </div>
+
         <Card>
           <CardHeader>
             <CardTitle>Attempts</CardTitle>
@@ -119,10 +219,10 @@ function ReportPage() {
                 <TableRow>
                   <TableHead>Student</TableHead>
                   <TableHead>Status</TableHead>
-                  <TableHead>Score</TableHead>
-                  <TableHead>Risk</TableHead>
-                  <TableHead>Critical</TableHead>
-                  <TableHead>Started</TableHead>
+                  <SortableHead label="Score" sortField="score" />
+                  <SortableHead label="Risk" sortField="risk_score" />
+                  <SortableHead label="Critical" sortField="critical_events" />
+                  <SortableHead label="Started" sortField="started_at" />
                   <TableHead></TableHead>
                 </TableRow>
               </TableHeader>
@@ -130,7 +230,7 @@ function ReportPage() {
                 {rows.length === 0 ? (
                   <TableRow><TableCell colSpan={7} className="text-center text-muted-foreground">No matching attempts.</TableCell></TableRow>
                 ) : rows.map((r) => (
-                  <TableRow key={r.attempt_id}>
+                  <TableRow key={r.attempt_id} className={r.risk_band === "high" ? "bg-destructive/5" : undefined}>
                     <TableCell>
                       <div className="font-medium">{r.full_name || "—"}</div>
                       <div className="text-xs text-muted-foreground">{r.email || "—"}</div>

@@ -145,6 +145,90 @@ export const uploadSnapshot = createServerFn({ method: "POST" })
   });
 
 // Teacher report functions
+
+export const listAllQuizReportsSummary = createServerFn({ method: "GET" })
+  .middleware([requireSupabaseAuth])
+  .handler(async ({ context }) => {
+    const { supabase, userId } = context;
+    const { data: quizzes, error: qErr } = await supabase
+      .from("quizzes")
+      .select("id, title, status, created_at")
+      .eq("teacher_id", userId)
+      .order("created_at", { ascending: false });
+    if (qErr) throw new Error(qErr.message);
+
+    const quizIds = (quizzes ?? []).map((q) => q.id);
+    if (quizIds.length === 0) return { quizzes: [] };
+
+    const results = await Promise.all(
+      quizIds.map(async (quizId) => {
+        const { data: attempts } = await supabase
+          .from("quiz_attempts")
+          .select("id, status, score, max_score")
+          .eq("quiz_id", quizId);
+        const totalAttempts = (attempts ?? []).length;
+        const completedAttempts = (attempts ?? []).filter((a) => a.status === "completed").length;
+        const avgScore = completedAttempts > 0
+          ? (attempts ?? []).reduce((sum, a) => sum + (a.score ?? 0), 0) / completedAttempts
+          : 0;
+        const avgMaxScore = completedAttempts > 0
+          ? (attempts ?? []).reduce((sum, a) => sum + (a.max_score ?? 0), 0) / completedAttempts
+          : 0;
+
+        const attemptIds = (attempts ?? []).map((a) => a.id);
+        let highRisk = 0;
+        let mediumRisk = 0;
+        let totalCritical = 0;
+
+        if (attemptIds.length > 0) {
+          const { data: critEvents } = await supabase
+            .from("proctoring_events")
+            .select("attempt_id")
+            .in("attempt_id", attemptIds)
+            .eq("severity", "critical");
+          totalCritical = (critEvents ?? []).length;
+
+          const riskResults = await Promise.all(
+            attemptIds.map(async (id) => {
+              const { data: risk } = await supabase.rpc("attempt_risk_score", { _attempt_id: id });
+              const r = Array.isArray(risk) && risk[0] ? risk[0] : { risk_band: "low" };
+              return r.risk_band;
+            })
+          );
+          highRisk = riskResults.filter((b) => b === "high").length;
+          mediumRisk = riskResults.filter((b) => b === "medium").length;
+        }
+
+        return {
+          quizId,
+          totalAttempts,
+          completedAttempts,
+          avgScore: Math.round(avgScore * 10) / 10,
+          avgMaxScore: Math.round(avgMaxScore * 10) / 10,
+          highRisk,
+          mediumRisk,
+          totalCritical,
+        };
+      })
+    );
+
+    const summaryMap = new Map(results.map((r) => [r.quizId, r]));
+    const quizzesWithStats = (quizzes ?? []).map((q) => ({
+      ...q,
+      stats: summaryMap.get(q.id) ?? {
+        totalAttempts: 0,
+        completedAttempts: 0,
+        avgScore: 0,
+        avgMaxScore: 0,
+        highRisk: 0,
+        mediumRisk: 0,
+        totalCritical: 0,
+      },
+    }));
+
+    return { quizzes: quizzesWithStats };
+  });
+
 export const listQuizAttemptsWithRisk = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .inputValidator((i: unknown) => z.object({ quizId: z.string().uuid() }).parse(i))
@@ -171,34 +255,51 @@ export const listQuizAttemptsWithRisk = createServerFn({ method: "POST" })
       (profs ?? []).forEach((p) => profMap.set(p.id, { full_name: p.full_name, email: p.email, student_id: p.student_id }));
     }
 
-    const rows = await Promise.all(
-      (attempts ?? []).map(async (a) => {
-        const { data: risk } = await supabase.rpc("attempt_risk_score", { _attempt_id: a.id });
+    const attemptIds = (attempts ?? []).map((a) => a.id);
+
+    // Batch-fetch critical event counts in a single query instead of N queries
+    const critCountMap = new Map<string, number>();
+    if (attemptIds.length > 0) {
+      const { data: critEvents } = await supabase
+        .from("proctoring_events")
+        .select("attempt_id")
+        .in("attempt_id", attemptIds)
+        .eq("severity", "critical");
+      (critEvents ?? []).forEach((e) => {
+        critCountMap.set(e.attempt_id, (critCountMap.get(e.attempt_id) ?? 0) + 1);
+      });
+    }
+
+    // Risk scores still need individual RPC calls (Supabase RPC doesn't support batch),
+    // but run them all in parallel
+    const riskResults = await Promise.all(
+      attemptIds.map(async (id) => {
+        const { data: risk } = await supabase.rpc("attempt_risk_score", { _attempt_id: id });
         const r = Array.isArray(risk) && risk[0] ? risk[0] : { risk_score: 0, risk_band: "low" };
-        const { count: critCount } = await supabase
-          .from("proctoring_events")
-          .select("*", { count: "exact", head: true })
-          .eq("attempt_id", a.id)
-          .eq("severity", "critical");
-        const prof = profMap.get(a.student_id) ?? { full_name: null, email: null, student_id: null };
-        return {
-          attempt_id: a.id,
-          student_id: a.student_id,
-          full_name: prof.full_name,
-          email: prof.email,
-          student_id_value: prof.student_id,
-          status: a.status,
-          score: a.score,
-          max_score: a.max_score,
-          started_at: a.started_at,
-          submitted_at: a.submitted_at,
-          consent_given_at: a.consent_given_at,
-          risk_score: r.risk_score,
-          risk_band: r.risk_band,
-          critical_events: critCount ?? 0,
-        };
+        return { id, risk_score: r.risk_score, risk_band: r.risk_band };
       })
     );
+    const riskMap = new Map(riskResults.map((r) => [r.id, r]));
+
+    const rows = (attempts ?? []).map((a) => {
+      const r = riskMap.get(a.id) ?? { risk_score: 0, risk_band: "low" };
+      const prof = profMap.get(a.student_id) ?? { full_name: null, email: null };
+      return {
+        attempt_id: a.id,
+        student_id: a.student_id,
+        full_name: prof.full_name,
+        email: prof.email,
+        status: a.status,
+        score: a.score,
+        max_score: a.max_score,
+        started_at: a.started_at,
+        submitted_at: a.submitted_at,
+        consent_given_at: a.consent_given_at,
+        risk_score: r.risk_score,
+        risk_band: r.risk_band,
+        critical_events: critCountMap.get(a.id) ?? 0,
+      };
+    });
     return { quiz: { id: quiz.id, title: quiz.title }, rows };
   });
 
@@ -240,6 +341,9 @@ export const getAttemptProctoring = createServerFn({ method: "POST" })
       })
     );
 
+    // Extract verification snapshot as first-class property
+    const verificationSnapshot = snapshots.find((s) => s.kind === "verification") ?? null;
+
     const { data: events } = await supabase
       .from("proctoring_events")
       .select("id, event_type, severity, details, occurred_at")
@@ -265,6 +369,7 @@ export const getAttemptProctoring = createServerFn({ method: "POST" })
       attempt: a,
       quiz: quiz ? { id: quiz.id, title: quiz.title } : null,
       student: prof,
+      verificationSnapshot,
       snapshots,
       events: events ?? [],
       risk: r,
