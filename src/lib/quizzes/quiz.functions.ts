@@ -2,6 +2,7 @@ import { createServerFn } from "@tanstack/react-start";
 import { z } from "zod";
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
 import { quizUpsertSchema, questionUpsertSchema } from "./schemas";
+import { fetchQuizQuestionsAndOptions } from "./quiz-data";
 
 const idSchema = z.object({ quizId: z.string().uuid() });
 
@@ -28,21 +29,8 @@ export const getQuiz = createServerFn({ method: "POST" })
     if (error) throw new Error(error.message);
     if (!quiz) throw new Error("Quiz not found");
 
-    const { data: questions, error: qErr } = await supabase
-      .from("questions").select("*").eq("quiz_id", data.quizId)
-      .order("position", { ascending: true });
-    if (qErr) throw new Error(qErr.message);
-
-    const ids = (questions ?? []).map((q) => q.id);
-    let options: any[] = [];
-    if (ids.length > 0) {
-      const { data: opts, error: oErr } = await supabase
-        .from("question_options").select("*").in("question_id", ids)
-        .order("position", { ascending: true });
-      if (oErr) throw new Error(oErr.message);
-      options = opts ?? [];
-    }
-    return { quiz, questions: questions ?? [], options };
+    const { questions, options } = await fetchQuizQuestionsAndOptions(supabase, data.quizId);
+    return { quiz, questions, options };
   });
 
 export const createQuiz = createServerFn({ method: "POST" })

@@ -1,6 +1,7 @@
 import { createServerFn } from "@tanstack/react-start";
 import { z } from "zod";
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
+import { fetchQuizQuestionsAndOptions } from "./quiz-data";
 
 export const enrollByCode = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
@@ -72,18 +73,13 @@ export const getQuizForAttempt = createServerFn({ method: "POST" })
     if (error) throw new Error(error.message);
     if (!quiz || quiz.status !== "published") throw new Error("Quiz unavailable");
 
-    const { data: questions } = await supabase
-      .from("questions").select("id, prompt, type, points, position")
-      .eq("quiz_id", data.quizId).order("position");
-    const ids = (questions ?? []).map((q) => q.id);
-    let options: any[] = [];
-    if (ids.length > 0) {
-      const { data: opts } = await supabase
-        .from("question_options").select("id, question_id, label, position")
-        .in("question_id", ids).order("position");
-      options = opts ?? [];
-    }
-    return { quiz, questions: questions ?? [], options };
+    const { questions, options } = await fetchQuizQuestionsAndOptions(
+      supabase,
+      data.quizId,
+      "id, prompt, type, points, position",
+      "id, question_id, label, position"
+    );
+    return { quiz, questions, options };
   });
 
 export const startAttempt = createServerFn({ method: "POST" })
@@ -142,11 +138,16 @@ export const submitAttempt = createServerFn({ method: "POST" })
     }
 
     // Grade
-    const { data: questions } = await supabase
-      .from("questions").select("id, type, points").eq("quiz_id", data.quizId);
-    const qIds = (questions ?? []).map((q) => q.id);
+    const { questions } = await fetchQuizQuestionsAndOptions(
+      supabase,
+      data.quizId,
+      "id, type, points",
+      "id, question_id, is_correct"
+    );
+    const qIds = (questions ?? []).map((q: any) => q.id);
     const { data: opts } = await supabase
-      .from("question_options").select("id, question_id, is_correct")
+      .from("question_options")
+      .select("id, question_id, is_correct")
       .in("question_id", qIds.length > 0 ? qIds : ["00000000-0000-0000-0000-000000000000"]);
     const correctByQ = new Map<string, Set<string>>();
     (opts ?? []).forEach((o) => {
