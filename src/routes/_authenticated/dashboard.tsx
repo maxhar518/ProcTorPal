@@ -91,7 +91,9 @@ function StudentCards() {
         icon={<Award className="h-5 w-5 text-primary" />}
         title="Join a quiz"
         description="Enter an access code or scan a QR."
-        cta={<Button asChild size="sm" variant="outline"><Link to="/join">Join</Link></Button>}
+        cta={<Button asChild size="sm" variant="outline">
+          <Link to="/join">Join</Link>
+          </Button>}
       />
       <DashCard
         icon={<UserCircle className="h-5 w-5 text-primary" />}
@@ -111,19 +113,19 @@ function TeacherCards() {
   return (
     <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-5">
       <DashCard
-        icon={<ClipboardList className="h-5 w-5 text-primary" />}
+        icon={<ClipboardList className="h-6 w-6 text-primary" />}
         title="Quizzes"
-        description="Create and manage your quizzes."
+        description="Create, View and Delete your quizzes."
         cta={<Button asChild size="sm"><Link to="/quizzes">Manage</Link></Button>}
       />
       <DashCard
-        icon={<BookOpen className="h-5 w-5 text-primary" />}
+        icon={<BookOpen className="h-6 w-6 text-primary" />}
         title="Quiz Bank"
         description="Browse bank questions, build quizzes, and generate versions."
         cta={<Button asChild size="sm" variant="outline"><Link to="/quiz-bank">Open bank</Link></Button>}
       />
       <DashCard
-        icon={<Users className="h-5 w-5 text-primary" />}
+        icon={<Users className="h-6 w-6 text-primary" />}
         title="Students"
         description="View enrolled students from each quiz."
         cta={<Button asChild size="sm" variant="outline"><Link to="/quizzes">Open quizzes</Link></Button>}
@@ -135,7 +137,7 @@ function TeacherCards() {
         cta={<EmptyCta label="Coming soon" />}
       />
       <DashCard
-        icon={<BarChart3 className="h-5 w-5 text-primary" />}
+        icon={<BarChart3 className="h-6 w-6 text-primary" />}
         title="Reports"
         description="Performance and proctoring reports."
         cta={<Button asChild size="sm" variant="outline"><Link to="/reports">View</Link></Button>}
