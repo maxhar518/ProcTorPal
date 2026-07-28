@@ -13,7 +13,7 @@ import { enrollByCode } from "@/lib/quizzes/student.functions";
 
 export const Route = createFileRoute("/_authenticated/join")({
   head: () => ({ meta: [{ title: "Join quiz — ProctorAI" }] }),
-  validateSearch: (s: Record<string, unknown>) => ({ code: typeof s.code === "string" ? s.code : undefined }),
+  validateSearch: (s: Record<string, unknown>) => ({ code: typeof s.code === "string" ? s.code : undefined }),//code must be non optional
   component: JoinPage,
 });
 

@@ -92,7 +92,7 @@ function StudentCards() {
         title="Join a quiz"
         description="Enter an access code or scan a QR."
         cta={<Button asChild size="sm" variant="outline">
-          <Link to="/join">Join</Link>
+          <Link to="/join"  search={{code: "quiz-abc",}}>Join</Link>
           </Button>}
       />
       <DashCard

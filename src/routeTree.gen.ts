@@ -15,6 +15,7 @@ import { Route as LoginRouteImport } from './routes/login'
 import { Route as ForgotPasswordRouteImport } from './routes/forgot-password'
 import { Route as AuthenticatedRouteImport } from './routes/_authenticated'
 import { Route as IndexRouteImport } from './routes/index'
+import { Route as AuthenticatedReportsRouteImport } from './routes/_authenticated/reports'
 import { Route as AuthenticatedQuizBankRouteImport } from './routes/_authenticated/quiz-bank'
 import { Route as AuthenticatedProfileRouteImport } from './routes/_authenticated/profile'
 import { Route as AuthenticatedJoinRouteImport } from './routes/_authenticated/join'
@@ -58,6 +59,11 @@ const IndexRoute = IndexRouteImport.update({
   path: '/',
   getParentRoute: () => rootRouteImport,
 } as any)
+const AuthenticatedReportsRoute = AuthenticatedReportsRouteImport.update({
+  id: '/reports',
+  path: '/reports',
+  getParentRoute: () => AuthenticatedRoute,
+} as any)
 const AuthenticatedQuizBankRoute = AuthenticatedQuizBankRouteImport.update({
   id: '/quiz-bank',
   path: '/quiz-bank',
@@ -80,9 +86,9 @@ const AuthenticatedDashboardRoute = AuthenticatedDashboardRouteImport.update({
 } as any)
 const AuthenticatedReportsIndexRoute =
   AuthenticatedReportsIndexRouteImport.update({
-    id: '/reports/',
-    path: '/reports/',
-    getParentRoute: () => AuthenticatedRoute,
+    id: '/',
+    path: '/',
+    getParentRoute: () => AuthenticatedReportsRoute,
   } as any)
 const AuthenticatedQuizzesIndexRoute =
   AuthenticatedQuizzesIndexRouteImport.update({
@@ -143,6 +149,7 @@ export interface FileRoutesByFullPath {
   '/join': typeof AuthenticatedJoinRoute
   '/profile': typeof AuthenticatedProfileRoute
   '/quiz-bank': typeof AuthenticatedQuizBankRoute
+  '/reports': typeof AuthenticatedReportsRouteWithChildren
   '/my-quizzes/': typeof AuthenticatedMyQuizzesIndexRoute
   '/quizzes/': typeof AuthenticatedQuizzesIndexRoute
   '/reports/': typeof AuthenticatedReportsIndexRoute
@@ -185,6 +192,7 @@ export interface FileRoutesById {
   '/_authenticated/join': typeof AuthenticatedJoinRoute
   '/_authenticated/profile': typeof AuthenticatedProfileRoute
   '/_authenticated/quiz-bank': typeof AuthenticatedQuizBankRoute
+  '/_authenticated/reports': typeof AuthenticatedReportsRouteWithChildren
   '/_authenticated/my-quizzes/': typeof AuthenticatedMyQuizzesIndexRoute
   '/_authenticated/quizzes/': typeof AuthenticatedQuizzesIndexRoute
   '/_authenticated/reports/': typeof AuthenticatedReportsIndexRoute
@@ -207,6 +215,7 @@ export interface FileRouteTypes {
     | '/join'
     | '/profile'
     | '/quiz-bank'
+    | '/reports'
     | '/my-quizzes/'
     | '/quizzes/'
     | '/reports/'
@@ -248,6 +257,7 @@ export interface FileRouteTypes {
     | '/_authenticated/join'
     | '/_authenticated/profile'
     | '/_authenticated/quiz-bank'
+    | '/_authenticated/reports'
     | '/_authenticated/my-quizzes/'
     | '/_authenticated/quizzes/'
     | '/_authenticated/reports/'
@@ -312,6 +322,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof IndexRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/_authenticated/reports': {
+      id: '/_authenticated/reports'
+      path: '/reports'
+      fullPath: '/reports'
+      preLoaderRoute: typeof AuthenticatedReportsRouteImport
+      parentRoute: typeof AuthenticatedRoute
+    }
     '/_authenticated/quiz-bank': {
       id: '/_authenticated/quiz-bank'
       path: '/quiz-bank'
@@ -342,10 +359,10 @@ declare module '@tanstack/react-router' {
     }
     '/_authenticated/reports/': {
       id: '/_authenticated/reports/'
-      path: '/reports'
+      path: '/'
       fullPath: '/reports/'
       preLoaderRoute: typeof AuthenticatedReportsIndexRouteImport
-      parentRoute: typeof AuthenticatedRoute
+      parentRoute: typeof AuthenticatedReportsRoute
     }
     '/_authenticated/quizzes/': {
       id: '/_authenticated/quizzes/'
@@ -406,14 +423,25 @@ declare module '@tanstack/react-router' {
   }
 }
 
+interface AuthenticatedReportsRouteChildren {
+  AuthenticatedReportsIndexRoute: typeof AuthenticatedReportsIndexRoute
+}
+
+const AuthenticatedReportsRouteChildren: AuthenticatedReportsRouteChildren = {
+  AuthenticatedReportsIndexRoute: AuthenticatedReportsIndexRoute,
+}
+
+const AuthenticatedReportsRouteWithChildren =
+  AuthenticatedReportsRoute._addFileChildren(AuthenticatedReportsRouteChildren)
+
 interface AuthenticatedRouteChildren {
   AuthenticatedDashboardRoute: typeof AuthenticatedDashboardRoute
   AuthenticatedJoinRoute: typeof AuthenticatedJoinRoute
   AuthenticatedProfileRoute: typeof AuthenticatedProfileRoute
   AuthenticatedQuizBankRoute: typeof AuthenticatedQuizBankRoute
+  AuthenticatedReportsRoute: typeof AuthenticatedReportsRouteWithChildren
   AuthenticatedMyQuizzesIndexRoute: typeof AuthenticatedMyQuizzesIndexRoute
   AuthenticatedQuizzesIndexRoute: typeof AuthenticatedQuizzesIndexRoute
-  AuthenticatedReportsIndexRoute: typeof AuthenticatedReportsIndexRoute
   AuthenticatedMyQuizzesQuizIdAttemptRoute: typeof AuthenticatedMyQuizzesQuizIdAttemptRoute
   AuthenticatedMyQuizzesQuizIdResultRoute: typeof AuthenticatedMyQuizzesQuizIdResultRoute
   AuthenticatedQuizzesQuizIdEditRoute: typeof AuthenticatedQuizzesQuizIdEditRoute
@@ -427,9 +455,9 @@ const AuthenticatedRouteChildren: AuthenticatedRouteChildren = {
   AuthenticatedJoinRoute: AuthenticatedJoinRoute,
   AuthenticatedProfileRoute: AuthenticatedProfileRoute,
   AuthenticatedQuizBankRoute: AuthenticatedQuizBankRoute,
+  AuthenticatedReportsRoute: AuthenticatedReportsRouteWithChildren,
   AuthenticatedMyQuizzesIndexRoute: AuthenticatedMyQuizzesIndexRoute,
   AuthenticatedQuizzesIndexRoute: AuthenticatedQuizzesIndexRoute,
-  AuthenticatedReportsIndexRoute: AuthenticatedReportsIndexRoute,
   AuthenticatedMyQuizzesQuizIdAttemptRoute:
     AuthenticatedMyQuizzesQuizIdAttemptRoute,
   AuthenticatedMyQuizzesQuizIdResultRoute:
