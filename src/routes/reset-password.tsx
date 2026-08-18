@@ -8,7 +8,7 @@ import { toast } from "sonner";
 import { AuthShell } from "./login";
 
 export const Route = createFileRoute("/reset-password")({
-  head: () => ({ meta: [{ title: "Set new password — ProctorAI" }] }),
+  head: () => ({ meta: [{ title: "Set new password — ProctorPal" }] }),
   component: ResetPage,
 });
 

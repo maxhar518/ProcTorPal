@@ -8,7 +8,7 @@ import { toast } from "sonner";
 import { AuthShell } from "./login";
 
 export const Route = createFileRoute("/forgot-password")({
-  head: () => ({ meta: [{ title: "Forgot password — ProctorAI" }] }),
+  head: () => ({ meta: [{ title: "Forgot password — ProctorPal" }] }),
   component: ForgotPage,
 });
 
@@ -33,10 +33,7 @@ function ForgotPage() {
   }
 
   return (
-    <AuthShell
-      title="Reset your password"
-      subtitle="We'll email you a link to set a new password."
-    >
+    <AuthShell title="Reset your password" subtitle="We'll email you a link to set a new password.">
       {sent ? (
         <p className="text-sm text-muted-foreground">
           If an account exists for <strong>{email}</strong>, you'll receive an email shortly.

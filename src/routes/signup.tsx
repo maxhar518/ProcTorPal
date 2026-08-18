@@ -5,6 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
+import { GraduationCap, UserCog } from "lucide-react";
 import { toast } from "sonner";
 import { AuthShell } from "./login";
 
@@ -15,7 +16,7 @@ function normalizeStudentId(value: string) {
 }
 
 export const Route = createFileRoute("/signup")({
-  head: () => ({ meta: [{ title: "Sign up — ProctorAI" }] }),
+  head: () => ({ meta: [{ title: "Sign up — ProctorPal" }] }),
   component: SignupPage,
 });
 
@@ -80,7 +81,7 @@ function SignupPage() {
   }
 
   return (
-    <AuthShell title="Create your ProctorAI account" subtitle="Choose your role to get started.">
+    <AuthShell title="Create your ProctorPal account" subtitle="Choose your role to get started.">
       <form onSubmit={onSubmit} className="space-y-4">
         <div className="space-y-2">
           <Label htmlFor="fullName">Full name</Label>
@@ -136,13 +137,15 @@ function SignupPage() {
             onValueChange={(v) => setRole(v as "student" | "teacher")}
             className="grid grid-cols-2 gap-2"
           >
-            <label className="flex cursor-pointer items-center gap-2 rounded-md border p-3 has-[:checked]:border-primary has-[:checked]:bg-accent">
-              <RadioGroupItem value="student" />
+            <label className="flex cursor-pointer flex-col items-center gap-1.5 rounded-lg border border-border p-4 text-sm font-medium transition-colors has-[:checked]:border-primary has-[:checked]:bg-primary/10">
+              <GraduationCap className="h-5 w-5 text-primary" />
               <span>Student</span>
+              <RadioGroupItem value="student" className="sr-only" />
             </label>
-            <label className="flex cursor-pointer items-center gap-2 rounded-md border p-3 has-[:checked]:border-primary has-[:checked]:bg-accent">
-              <RadioGroupItem value="teacher" />
+            <label className="flex cursor-pointer flex-col items-center gap-1.5 rounded-lg border border-border p-4 text-sm font-medium transition-colors has-[:checked]:border-primary has-[:checked]:bg-primary/10">
+              <UserCog className="h-5 w-5 text-primary" />
               <span>Teacher</span>
+              <RadioGroupItem value="teacher" className="sr-only" />
             </label>
           </RadioGroup>
         </div>

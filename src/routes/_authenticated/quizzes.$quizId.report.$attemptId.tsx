@@ -8,19 +8,27 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Dialog, DialogContent } from "@/components/ui/dialog";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Loader2, ArrowLeft } from "lucide-react";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import { Loader2, ArrowLeft, ShieldCheck, ScanFace } from "lucide-react";
 import { getAttemptProctoring } from "@/lib/proctoring/proctoring.functions";
 
 export const Route = createFileRoute("/_authenticated/quizzes/$quizId/report/$attemptId")({
-  head: () => ({ meta: [{ title: "Attempt details — ProctorAI" }] }),
+  head: () => ({ meta: [{ title: "Attempt details — ProctorPal" }] }),
   component: AttemptDetailPage,
-  errorComponent: ({ error }) => <div className="p-8 text-sm text-destructive">{error.message}</div>,
+  errorComponent: ({ error }) => (
+    <div className="p-8 text-sm text-destructive">{error.message}</div>
+  ),
 });
 
 const SEVERITY_COLOR: Record<string, string> = {
-  info: "bg-muted text-muted-foreground",
-  warn: "bg-yellow-500/15 text-yellow-700 dark:text-yellow-300",
+  info: "bg-muted/60 text-muted-foreground",
+  warn: "bg-warning/10 text-warning",
   critical: "bg-destructive/15 text-destructive",
 };
 
@@ -51,15 +59,44 @@ const EVENT_LABELS: Record<string, string> = {
 };
 
 const SEVERITY_BADGE: Record<string, string> = {
-  info: "secondary",
-  warn: "outline",
-  critical: "destructive",
+  info: "outline",
+  warn: "outline_warning",
+  critical: "outline_destructive",
 };
 
 function bandVariant(band: string) {
-  if (band === "high") return "destructive";
-  if (band === "medium") return "default";
-  return "secondary";
+  if (band === "high") return "outline_destructive";
+  if (band === "medium") return "outline_warning";
+  return "outline_success";
+}
+
+function FaceStatusBadge({ face }: { face: string }) {
+  if (face === "ok") {
+    return (
+      <span className="inline-flex items-center gap-1 rounded-full border border-success/40 bg-success/10 px-2 py-0.5 text-xs font-medium text-success">
+        Verified
+      </span>
+    );
+  }
+  if (face === "missing") {
+    return (
+      <span className="inline-flex items-center gap-1 rounded-full border border-warning/40 bg-warning/10 px-2 py-0.5 text-xs font-medium text-warning">
+        Face not detected
+      </span>
+    );
+  }
+  if (face === "multiple") {
+    return (
+      <span className="inline-flex items-center gap-1 rounded-full border border-destructive/40 bg-destructive/10 px-2 py-0.5 text-xs font-medium text-destructive">
+        Multiple faces
+      </span>
+    );
+  }
+  return (
+    <span className="inline-flex items-center gap-1 rounded-full border border-border bg-secondary/50 px-2 py-0.5 text-xs font-medium text-muted-foreground">
+      Unknown
+    </span>
+  );
 }
 
 function formatDetail(key: string, value: unknown): string {
@@ -105,7 +142,11 @@ function AttemptDetailPage() {
   }, [data?.events]);
 
   if (loading || isLoading) {
-    return <div className="flex min-h-screen items-center justify-center"><Loader2 className="h-6 w-6 animate-spin text-muted-foreground" /></div>;
+    return (
+      <div className="flex min-h-screen items-center justify-center">
+        <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+      </div>
+    );
   }
   if (!data) return null;
   const { attempt, student, verificationSnapshot, snapshots, events, risk, counts } = data;
@@ -124,88 +165,101 @@ function AttemptDetailPage() {
   return (
     <div className="min-h-screen bg-background">
       <AppHeader role="teacher" />
-      <main className="mx-auto max-w-6xl px-6 py-10">
+      <main className="mx-auto max-w-6xl px-4 py-8 sm:px-6">
         <Button asChild variant="ghost" size="sm" className="mb-3">
-          <Link to="/quizzes/$quizId/report" params={{ quizId }}><ArrowLeft className="mr-1 h-4 w-4" />Back to report</Link>
+          <Link to="/quizzes/$quizId/report" params={{ quizId }}>
+            <ArrowLeft className="mr-1 h-4 w-4" />
+            Back to report
+          </Link>
         </Button>
 
         <div className="mb-6 flex flex-wrap items-end justify-between gap-4">
           <div>
-            <h1 className="text-2xl font-semibold">{student?.full_name || student?.email || "Student"}</h1>
-            <p className="text-sm text-muted-foreground">
+            <h1 className="text-2xl font-bold tracking-tight">
+              {student?.full_name || student?.email || "Student"}
+            </h1>
+            <p className="mt-1 text-sm text-muted-foreground">
               {student?.student_id ? <>ID {student.student_id} · </> : null}
               Started {new Date(attempt.started_at).toLocaleString()}
-              {attempt.submitted_at && <> · Submitted {new Date(attempt.submitted_at).toLocaleString()}</>}
+              {attempt.submitted_at && (
+                <> · Submitted {new Date(attempt.submitted_at).toLocaleString()}</>
+              )}
             </p>
           </div>
           <div className="flex items-center gap-3">
             <div className="text-right">
               <div className="text-xs text-muted-foreground">Score</div>
-              <div className="font-medium">{attempt.score != null && attempt.max_score != null ? `${attempt.score}/${attempt.max_score}` : "—"}</div>
+              <div className="font-semibold">
+                {attempt.score != null && attempt.max_score != null
+                  ? `${attempt.score}/${attempt.max_score}`
+                  : "—"}
+              </div>
             </div>
             <div className="text-right">
               <div className="text-xs text-muted-foreground">Risk</div>
-              <Badge variant={bandVariant(risk.risk_band) as any}>{risk.risk_band} · {risk.risk_score}</Badge>
+              <Badge variant={bandVariant(risk.risk_band) as any}>
+                {risk.risk_band} · {risk.risk_score}
+              </Badge>
             </div>
           </div>
         </div>
 
-        <div className="mb-6 grid grid-cols-2 gap-3 sm:grid-cols-4 lg:grid-cols-4">
+        <div className="mb-6 grid grid-cols-2 gap-3 sm:grid-cols-4">
           {highlights.map((h) => {
             const count = counts[h.key] ?? 0;
             const hasViolation = count > 0;
             return (
-              <Card key={h.key} className={hasViolation ? "border-destructive/50 bg-destructive/5" : ""}>
-                <CardHeader className="pb-1"><CardDescription className="text-xs">{h.label}</CardDescription></CardHeader>
-                <CardContent><div className={`text-2xl font-semibold ${hasViolation ? "text-destructive" : ""}`}>{count}</div></CardContent>
+              <Card
+                key={h.key}
+                className={hasViolation ? "border-destructive/40 bg-destructive/5" : ""}
+              >
+                <CardHeader className="pb-1">
+                  <CardDescription className="text-xs">{h.label}</CardDescription>
+                </CardHeader>
+                <CardContent>
+                  <div
+                    className={`text-2xl font-bold ${hasViolation ? "text-destructive" : "text-foreground"}`}
+                  >
+                    {count}
+                  </div>
+                </CardContent>
               </Card>
             );
           })}
         </div>
 
         {verificationSnapshot && (
-          <Card className="mb-6 border-blue-200 dark:border-blue-900 bg-blue-50 dark:bg-blue-950/30">
+          <Card className="mb-6 border-info/40 bg-info/5">
             <CardHeader>
-              <CardTitle className="text-sm text-blue-700 dark:text-blue-300">Attendance Verification</CardTitle>
+              <CardTitle className="flex items-center gap-2 text-sm text-info">
+                <ScanFace className="h-4 w-4" /> Attendance Verification
+              </CardTitle>
               <CardDescription>First snapshot captured at quiz start</CardDescription>
             </CardHeader>
             <CardContent>
               <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:gap-4">
                 <div className="flex-shrink-0">
                   {verificationSnapshot.signed_url ? (
-                    <img src={verificationSnapshot.signed_url} alt="verification snapshot" className="h-32 w-40 rounded-md border border-border object-cover shadow-sm" />
+                    <img
+                      src={verificationSnapshot.signed_url}
+                      alt="verification snapshot"
+                      className="h-32 w-40 rounded-lg border border-border object-cover shadow-sm"
+                    />
                   ) : (
-                    <div className="h-32 w-40 rounded-md border border-border bg-muted" />
+                    <div className="h-32 w-40 rounded-lg border border-border bg-muted" />
                   )}
                 </div>
                 <div className="flex-1 space-y-2">
                   <div>
                     <p className="text-xs font-medium text-muted-foreground">Captured at</p>
-                    <p className="text-sm">{new Date(verificationSnapshot.captured_at).toLocaleString()}</p>
+                    <p className="text-sm">
+                      {new Date(verificationSnapshot.captured_at).toLocaleString()}
+                    </p>
                   </div>
                   <div>
                     <p className="text-xs font-medium text-muted-foreground">Face status</p>
-                    <p className="text-sm">
-                      {verificationSnapshot.face_status === "ok" && (
-                        <span className="inline-flex items-center gap-1 rounded-full bg-green-100 px-2 py-1 text-xs font-medium text-green-700 dark:bg-green-900/30 dark:text-green-300">
-                          Verified
-                        </span>
-                      )}
-                      {verificationSnapshot.face_status === "missing" && (
-                        <span className="inline-flex items-center gap-1 rounded-full bg-yellow-100 px-2 py-1 text-xs font-medium text-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-300">
-                          Face not detected
-                        </span>
-                      )}
-                      {verificationSnapshot.face_status === "multiple" && (
-                        <span className="inline-flex items-center gap-1 rounded-full bg-red-100 px-2 py-1 text-xs font-medium text-red-700 dark:bg-red-900/30 dark:text-red-300">
-                          Multiple faces
-                        </span>
-                      )}
-                      {verificationSnapshot.face_status === "unknown" && (
-                        <span className="inline-flex items-center gap-1 rounded-full bg-gray-100 px-2 py-1 text-xs font-medium text-gray-700 dark:bg-gray-900/30 dark:text-gray-300">
-                          Unknown
-                        </span>
-                      )}
+                    <p className="mt-1 text-sm">
+                      <FaceStatusBadge face={verificationSnapshot.face_status} />
                     </p>
                   </div>
                 </div>
@@ -218,7 +272,9 @@ function AttemptDetailPage() {
           <Card>
             <CardHeader>
               <CardTitle>Activity snapshots</CardTitle>
-              <CardDescription>{snapshots.length} periodic captures · click any image to enlarge</CardDescription>
+              <CardDescription>
+                {snapshots.length} periodic captures · click any image to enlarge
+              </CardDescription>
             </CardHeader>
             <CardContent>
               {snapshots.length === 0 ? (
@@ -229,19 +285,25 @@ function AttemptDetailPage() {
                     <button
                       key={s.id}
                       onClick={() => s.signed_url && setZoomUrl(s.signed_url)}
-                      className="group relative overflow-hidden rounded-md border border-border bg-muted text-left"
+                      className="group relative overflow-hidden rounded-lg border border-border bg-muted text-left"
                     >
                       {s.signed_url ? (
-                        <img src={s.signed_url} alt="snapshot" className="aspect-[4/3] w-full object-cover" />
+                        <img
+                          src={s.signed_url}
+                          alt="snapshot"
+                          className="aspect-[4/3] w-full object-cover transition-transform group-hover:scale-105"
+                        />
                       ) : (
                         <div className="aspect-[4/3] w-full" />
                       )}
-                      <div className="absolute inset-x-0 bottom-0 bg-black/60 px-1.5 py-1 text-[10px] text-white">
+                      <div className="absolute inset-x-0 bottom-0 bg-black/70 px-1.5 py-1 text-[10px] text-white backdrop-blur-sm">
                         <div>{new Date(s.captured_at).toLocaleTimeString()}</div>
                         <div className="flex items-center justify-between">
                           <span>{s.kind}</span>
                           {s.face_status && s.face_status !== "ok" && (
-                            <span className="rounded bg-destructive px-1">{s.face_status}</span>
+                            <span className="rounded bg-destructive px-1 font-semibold">
+                              {s.face_status}
+                            </span>
                           )}
                         </div>
                       </div>
@@ -278,23 +340,34 @@ function AttemptDetailPage() {
               ) : (
                 <ol className="max-h-[600px] space-y-1 overflow-auto pr-2 text-xs">
                   {filteredEvents.map((e) => {
-                    const detailParts = (e.details && typeof e.details === "object")
-                      ? Object.entries(e.details)
-                          .map(([k, v]) => formatDetail(k, v))
-                          .filter(Boolean)
-                      : [];
+                    const detailParts =
+                      e.details && typeof e.details === "object"
+                        ? Object.entries(e.details)
+                            .map(([k, v]) => formatDetail(k, v))
+                            .filter(Boolean)
+                        : [];
                     return (
-                      <li key={e.id} className={`flex items-start gap-2 rounded px-2 py-1 ${SEVERITY_COLOR[e.severity] ?? ""}`}>
+                      <li
+                        key={e.id}
+                        className={`flex items-start gap-2 rounded-lg px-2 py-1.5 ${SEVERITY_COLOR[e.severity] ?? ""}`}
+                      >
                         <span className="mt-0.5 font-mono text-[10px] text-muted-foreground">
                           {new Date(e.occurred_at).toLocaleTimeString()}
                         </span>
                         <div className="flex-1">
-                          <span className="font-medium">{EVENT_LABELS[e.event_type] ?? e.event_type}</span>
+                          <span className="font-medium">
+                            {EVENT_LABELS[e.event_type] ?? e.event_type}
+                          </span>
                           {detailParts.length > 0 && (
-                            <span className="ml-1 text-muted-foreground">— {detailParts.join(", ")}</span>
+                            <span className="ml-1 text-muted-foreground">
+                              — {detailParts.join(", ")}
+                            </span>
                           )}
                         </div>
-                        <Badge variant={(SEVERITY_BADGE[e.severity] as any) ?? "secondary"} className="text-[10px]">
+                        <Badge
+                          variant={(SEVERITY_BADGE[e.severity] as any) ?? "outline"}
+                          className="text-[10px]"
+                        >
                           {e.severity}
                         </Badge>
                       </li>
@@ -304,6 +377,12 @@ function AttemptDetailPage() {
               )}
             </CardContent>
           </Card>
+        </div>
+
+        <div className="mt-6 flex items-center gap-2 rounded-xl border border-success/30 bg-success/5 px-4 py-3 text-xs text-muted-foreground">
+          <ShieldCheck className="h-4 w-4 text-success" />
+          Evidence captured and logged for this attempt. Share the CSV export for a permanent
+          record.
         </div>
       </main>
 

@@ -7,16 +7,27 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Badge } from "@/components/ui/badge";
 import { toast } from "sonner";
 import { Loader2, PlusCircle, Sparkles } from "lucide-react";
-import { listQuizBankSubjects, listQuizBankQuestions, createQuizFromBank, generateQuizVersions } from "@/lib/quizzes/quiz-bank.functions";
+import {
+  listQuizBankSubjects,
+  listQuizBankQuestions,
+  createQuizFromBank,
+  generateQuizVersions,
+} from "@/lib/quizzes/quiz-bank.functions";
 import { getMyProfile } from "@/lib/auth/profile.functions";
 
 export const Route = createFileRoute("/_authenticated/quiz-bank")({
-  head: () => ({ meta: [{ title: "Quiz Bank — ProctorAI" }] }),
+  head: () => ({ meta: [{ title: "Quiz Bank — ProctorPal" }] }),
   component: QuizBankPage,
 });
 
@@ -41,15 +52,44 @@ function QuizBankPage() {
   const profileFn = useServerFn(getMyProfile);
 
   const { data: profileData } = useQuery({ queryKey: ["my-profile"], queryFn: () => profileFn() });
-  const { data: subjectsData } = useQuery({ queryKey: ["quiz-bank-subjects"], queryFn: () => subjectFn() });
+  const { data: subjectsData } = useQuery({
+    queryKey: ["quiz-bank-subjects"],
+    queryFn: () => subjectFn(),
+  });
   const { data: bankData, isLoading } = useQuery({
     queryKey: ["quiz-bank-questions", subjectId, search, difficulty, status],
-    queryFn: () => questionFn({ data: { subjectId: subjectId === "all" ? null : subjectId, search, difficulty: difficulty as any, status: status as any, page: 1, pageSize: 50 } }),
+    queryFn: () =>
+      questionFn({
+        data: {
+          subjectId: subjectId === "all" ? null : subjectId,
+          search,
+          difficulty: difficulty as any,
+          status: status as any,
+          page: 1,
+          pageSize: 50,
+        },
+      }),
     enabled: profileData?.role === "teacher",
   });
 
   const createMutation = useMutation({
-    mutationFn: () => createQuiz({ data: { title, subjectId: (subjectsData?.subjects ?? []).find((s: any) => s.id === subjectId)?.id ?? (subjectsData?.subjects?.[0]?.id ?? ""), durationMinutes: Number(durationMinutes || 45), totalMarks: Number(totalMarks || 20), passingMarks: Number(passingMarks || 10), availableFrom: null, availableUntil: null, questionIds: selectedIds, publishNow } }),
+    mutationFn: () =>
+      createQuiz({
+        data: {
+          title,
+          subjectId:
+            (subjectsData?.subjects ?? []).find((s: any) => s.id === subjectId)?.id ??
+            subjectsData?.subjects?.[0]?.id ??
+            "",
+          durationMinutes: Number(durationMinutes || 45),
+          totalMarks: Number(totalMarks || 20),
+          passingMarks: Number(passingMarks || 10),
+          availableFrom: null,
+          availableUntil: null,
+          questionIds: selectedIds,
+          publishNow,
+        },
+      }),
     onSuccess: async ({ quiz }) => {
       await generateVersions({ data: { quizId: quiz.id } });
       toast.success("Quiz created from bank questions.");
@@ -62,7 +102,9 @@ function QuizBankPage() {
   const rows = useMemo(() => bankData?.rows ?? [], [bankData]);
 
   const toggleSelected = (id: string) => {
-    setSelectedIds((prev) => (prev.includes(id) ? prev.filter((item) => item !== id) : [...prev, id]));
+    setSelectedIds((prev) =>
+      prev.includes(id) ? prev.filter((item) => item !== id) : [...prev, id],
+    );
   };
 
   if (profileData?.role !== "teacher") {
@@ -73,7 +115,9 @@ function QuizBankPage() {
           <Card>
             <CardHeader>
               <CardTitle>Teachers only</CardTitle>
-              <CardDescription>This workspace is reserved for teacher quiz-bank management.</CardDescription>
+              <CardDescription>
+                This workspace is reserved for instructor quiz-bank management.
+              </CardDescription>
             </CardHeader>
           </Card>
         </main>
@@ -84,11 +128,13 @@ function QuizBankPage() {
   return (
     <div className="min-h-screen bg-background">
       <AppHeader role="teacher" />
-      <main className="mx-auto max-w-7xl px-6 py-10">
+      <main className="mx-auto max-w-7xl px-4 py-8 sm:px-6">
         <div className="mb-6 flex flex-wrap items-center justify-between gap-3">
           <div>
-            <h1 className="text-2xl font-semibold">Quiz Bank</h1>
-            <p className="text-sm text-muted-foreground">Browse subject questions, pick a set, and create a new quiz.</p>
+            <h1 className="text-2xl font-bold tracking-tight">Quiz Bank</h1>
+            <p className="mt-1 text-sm text-muted-foreground">
+              Browse subject questions, pick a set, and create a new quiz.
+            </p>
           </div>
           <Button asChild variant="outline">
             <Link to="/quizzes">Back to quizzes</Link>
@@ -106,11 +152,15 @@ function QuizBankPage() {
                 <div className="space-y-2">
                   <Label>Subject</Label>
                   <Select value={subjectId} onValueChange={setSubjectId}>
-                    <SelectTrigger><SelectValue /></SelectTrigger>
+                    <SelectTrigger>
+                      <SelectValue />
+                    </SelectTrigger>
                     <SelectContent>
                       <SelectItem value="all">All subjects</SelectItem>
                       {(subjectsData?.subjects ?? []).map((subject: any) => (
-                        <SelectItem key={subject.id} value={subject.id}>{subject.name}</SelectItem>
+                        <SelectItem key={subject.id} value={subject.id}>
+                          {subject.name}
+                        </SelectItem>
                       ))}
                     </SelectContent>
                   </Select>
@@ -118,7 +168,9 @@ function QuizBankPage() {
                 <div className="space-y-2">
                   <Label>Difficulty</Label>
                   <Select value={difficulty} onValueChange={setDifficulty}>
-                    <SelectTrigger><SelectValue /></SelectTrigger>
+                    <SelectTrigger>
+                      <SelectValue />
+                    </SelectTrigger>
                     <SelectContent>
                       <SelectItem value="all">All</SelectItem>
                       <SelectItem value="Easy">Easy</SelectItem>
@@ -130,7 +182,9 @@ function QuizBankPage() {
                 <div className="space-y-2">
                   <Label>Status</Label>
                   <Select value={status} onValueChange={setStatus}>
-                    <SelectTrigger><SelectValue /></SelectTrigger>
+                    <SelectTrigger>
+                      <SelectValue />
+                    </SelectTrigger>
                     <SelectContent>
                       <SelectItem value="all">All</SelectItem>
                       <SelectItem value="Draft">Draft</SelectItem>
@@ -139,30 +193,48 @@ function QuizBankPage() {
                   </Select>
                 </div>
               </div>
-              <Input placeholder="Search questions" value={search} onChange={(e) => setSearch(e.target.value)} />
-              {isLoading ? <div className="flex items-center gap-2 text-sm text-muted-foreground"><Loader2 className="h-4 w-4 animate-spin" />Loading questions…</div> : null}
+              <Input
+                placeholder="Search questions"
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+              />
+              {isLoading ? (
+                <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                  Loading questions…
+                </div>
+              ) : null}
               <div className="space-y-3">
-                {rows.map((question: any) => (
-                  <div key={question.id} className="rounded-lg border p-3">
-                    <div className="flex items-start gap-2">
-                      <Checkbox checked={selectedIds.includes(question.id)} onCheckedChange={() => toggleSelected(question.id)} />
-                      <div className="flex-1 space-y-2">
-                        <div className="flex flex-wrap items-center gap-2">
-                          <p className="text-sm font-medium">{question.question_text}</p>
-                          <Badge variant="outline">{question.difficulty}</Badge>
-                          <Badge variant="secondary">{question.marks} marks</Badge>
-                          <Badge variant="outline">{question.status}</Badge>
-                        </div>
-                        <div className="grid gap-1 text-sm text-muted-foreground">
-                          <span>A. {question.option_a}</span>
-                          <span>B. {question.option_b}</span>
-                          <span>C. {question.option_c}</span>
-                          <span>D. {question.option_d}</span>
+                {rows.map((question: any) => {
+                  const selected = selectedIds.includes(question.id);
+                  return (
+                    <div
+                      key={question.id}
+                      className={`rounded-xl border p-3 transition-colors ${selected ? "border-primary/60 bg-primary/5" : "border-border hover:border-primary/30"}`}
+                    >
+                      <div className="flex items-start gap-2">
+                        <Checkbox
+                          checked={selected}
+                          onCheckedChange={() => toggleSelected(question.id)}
+                        />
+                        <div className="flex-1 space-y-2">
+                          <div className="flex flex-wrap items-center gap-2">
+                            <p className="text-sm font-medium">{question.question_text}</p>
+                            <DifficultyBadge difficulty={question.difficulty} />
+                            <Badge variant="secondary">{question.marks} marks</Badge>
+                            <Badge variant="outline">{question.status}</Badge>
+                          </div>
+                          <div className="grid gap-1 text-sm text-muted-foreground">
+                            <span>A. {question.option_a}</span>
+                            <span>B. {question.option_b}</span>
+                            <span>C. {question.option_c}</span>
+                            <span>D. {question.option_d}</span>
+                          </div>
                         </div>
                       </div>
                     </div>
-                  </div>
-                ))}
+                  );
+                })}
               </div>
             </CardContent>
           </Card>
@@ -180,29 +252,55 @@ function QuizBankPage() {
               <div className="grid gap-3 sm:grid-cols-2">
                 <div className="space-y-2">
                   <Label>Duration (min)</Label>
-                  <Input type="number" value={durationMinutes} onChange={(e) => setDurationMinutes(e.target.value)} />
+                  <Input
+                    type="number"
+                    value={durationMinutes}
+                    onChange={(e) => setDurationMinutes(e.target.value)}
+                  />
                 </div>
                 <div className="space-y-2">
                   <Label>Total marks</Label>
-                  <Input type="number" value={totalMarks} onChange={(e) => setTotalMarks(e.target.value)} />
+                  <Input
+                    type="number"
+                    value={totalMarks}
+                    onChange={(e) => setTotalMarks(e.target.value)}
+                  />
                 </div>
               </div>
               <div className="space-y-2">
                 <Label>Passing marks</Label>
-                <Input type="number" value={passingMarks} onChange={(e) => setPassingMarks(e.target.value)} />
+                <Input
+                  type="number"
+                  value={passingMarks}
+                  onChange={(e) => setPassingMarks(e.target.value)}
+                />
               </div>
-              <div className="flex items-center gap-2 rounded-md border p-3">
-                <Checkbox checked={publishNow} onCheckedChange={(value) => setPublishNow(Boolean(value))} />
+              <div className="flex items-center gap-2 rounded-lg border border-border p-3">
+                <Checkbox
+                  checked={publishNow}
+                  onCheckedChange={(value) => setPublishNow(Boolean(value))}
+                />
                 <span className="text-sm">Publish immediately</span>
               </div>
-              <div className="rounded-lg border bg-accent/40 p-3 text-sm text-muted-foreground">
+              <div className="rounded-xl border border-primary/30 bg-primary/10 p-4 text-sm">
                 <div className="flex items-center gap-2 font-medium text-foreground">
-                  <Sparkles className="h-4 w-4" /> Selected questions: {selectedIds.length}
+                  <Sparkles className="h-4 w-4 text-primary" /> Selected questions:{" "}
+                  {selectedIds.length}
                 </div>
-                <p className="mt-1">This creates a new quiz and automatically generates versions A, B, and C.</p>
+                <p className="mt-1 text-muted-foreground">
+                  This creates a new quiz and automatically generates versions A, B, and C.
+                </p>
               </div>
-              <Button className="w-full" onClick={() => createMutation.mutate()} disabled={createMutation.isPending || selectedIds.length === 0}>
-                {createMutation.isPending ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <PlusCircle className="mr-2 h-4 w-4" />}
+              <Button
+                className="w-full"
+                onClick={() => createMutation.mutate()}
+                disabled={createMutation.isPending || selectedIds.length === 0}
+              >
+                {createMutation.isPending ? (
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                ) : (
+                  <PlusCircle className="mr-2 h-4 w-4" />
+                )}
                 Create quiz from selected questions
               </Button>
             </CardContent>
@@ -211,4 +309,10 @@ function QuizBankPage() {
       </main>
     </div>
   );
+}
+
+function DifficultyBadge({ difficulty }: { difficulty: string }) {
+  if (difficulty === "Easy") return <Badge variant="outline_success">{difficulty}</Badge>;
+  if (difficulty === "Hard") return <Badge variant="outline_destructive">{difficulty}</Badge>;
+  return <Badge variant="outline_warning">{difficulty}</Badge>;
 }

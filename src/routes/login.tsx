@@ -5,6 +5,8 @@ import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Logo } from "@/components/logo";
+import { ScanFace, MonitorSmartphone, ShieldCheck, Lock, ChevronLeft } from "lucide-react";
 import { toast } from "sonner";
 
 const searchSchema = z.object({
@@ -14,7 +16,7 @@ const searchSchema = z.object({
 export const Route = createFileRoute("/login")({
   validateSearch: (s) => searchSchema.parse(s),
   head: () => ({
-    meta: [{ title: "Log in — ProctorAI" }],
+    meta: [{ title: "Log in — ProctorPal" }],
   }),
   component: LoginPage,
 });
@@ -68,7 +70,10 @@ function LoginPage() {
   }
 
   return (
-    <AuthShell title="Log in to ProctorAI" subtitle="Welcome back.">
+    <AuthShell
+      title="Log in to ProctorPal"
+      subtitle="Welcome back. Enter your credentials to continue."
+    >
       <form onSubmit={onSubmit} className="space-y-4">
         <div className="space-y-2">
           <Label htmlFor="identifier">Email or Student ID</Label>
@@ -108,6 +113,21 @@ function LoginPage() {
   );
 }
 
+const BRAND_POINTS = [
+  {
+    icon: <ScanFace className="h-4 w-4 text-info" />,
+    text: "AI face verification and continuous identity monitoring",
+  },
+  {
+    icon: <MonitorSmartphone className="h-4 w-4 text-info" />,
+    text: "Fullscreen lockdown with focus and tab-switch detection",
+  },
+  {
+    icon: <ShieldCheck className="h-4 w-4 text-success" />,
+    text: "Real-time suspicious activity alerts for instructors",
+  },
+];
+
 export function AuthShell({
   title,
   subtitle,
@@ -118,15 +138,57 @@ export function AuthShell({
   children: React.ReactNode;
 }) {
   return (
-    <div className="flex min-h-screen items-center justify-center bg-background px-4 py-12">
-      <div className="w-full max-w-md rounded-lg border bg-card p-8 shadow-sm">
-        <Link to="/" className="mb-6 inline-block text-sm text-muted-foreground hover:text-foreground">
-          ← Back home
-        </Link>
-        <h1 className="text-2xl font-semibold">{title}</h1>
-        {subtitle && <p className="mt-1 text-sm text-muted-foreground">{subtitle}</p>}
-        <div className="mt-6">{children}</div>
-      </div>
+    <div className="flex min-h-screen bg-glow-primary">
+      {/* Brand panel */}
+      <aside className="relative hidden w-[44%] flex-col justify-between overflow-hidden border-r border-border bg-card/40 p-10 lg:flex">
+        <div className="pointer-events-none absolute inset-0 bg-security-grid [mask-image:radial-gradient(80%_70%_at_30%_20%,black,transparent)]" />
+        <div className="pointer-events-none absolute -left-24 top-1/4 h-80 w-80 rounded-full bg-primary/10 blur-3xl" />
+        <div className="relative">
+          <Logo size="lg" />
+        </div>
+        <div className="relative space-y-6">
+          <h2 className="text-3xl font-bold leading-tight tracking-tight">
+            Examinations monitored with{" "}
+            <span className="bg-gradient-to-r from-primary to-info bg-clip-text text-transparent">
+              security-grade precision
+            </span>
+          </h2>
+          <ul className="space-y-3">
+            {BRAND_POINTS.map((p) => (
+              <li key={p.text} className="flex items-start gap-2.5 text-sm text-muted-foreground">
+                <span className="mt-0.5 inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-md bg-primary/10 ring-1 ring-primary/20">
+                  {p.icon}
+                </span>
+                {p.text}
+              </li>
+            ))}
+          </ul>
+        </div>
+        <div className="relative flex items-center gap-2 text-xs text-muted-foreground">
+          <Lock className="h-3.5 w-3.5 text-success" />
+          Protected by end-to-end secure session infrastructure
+        </div>
+      </aside>
+
+      {/* Form panel */}
+      <main className="flex flex-1 items-center justify-center px-4 py-12">
+        <div className="w-full max-w-md">
+          <div className="mb-6 flex justify-center lg:hidden">
+            <Logo size="lg" />
+          </div>
+          <div className="rounded-2xl border border-border bg-card p-8 shadow-xl shadow-black/30">
+            <Link
+              to="/"
+              className="mb-6 inline-flex items-center gap-1 text-sm text-muted-foreground transition-colors hover:text-foreground"
+            >
+              <ChevronLeft className="h-4 w-4" /> Back home
+            </Link>
+            <h1 className="text-2xl font-bold tracking-tight">{title}</h1>
+            {subtitle && <p className="mt-1.5 text-sm text-muted-foreground">{subtitle}</p>}
+            <div className="mt-6">{children}</div>
+          </div>
+        </div>
+      </main>
     </div>
   );
 }

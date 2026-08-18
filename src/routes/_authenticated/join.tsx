@@ -7,13 +7,15 @@ import { AppHeader } from "@/components/app-header";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { Loader2, QrCode } from "lucide-react";
+import { Loader2, QrCode, KeyRound, ShieldCheck } from "lucide-react";
 import { toast } from "sonner";
 import { enrollByCode } from "@/lib/quizzes/student.functions";
 
 export const Route = createFileRoute("/_authenticated/join")({
-  head: () => ({ meta: [{ title: "Join quiz — ProctorAI" }] }),
-  validateSearch: (s: Record<string, unknown>) => ({ code: typeof s.code === "string" ? s.code : undefined }),//code must be non optional
+  head: () => ({ meta: [{ title: "Join quiz — ProctorPal" }] }),
+  validateSearch: (s: Record<string, unknown>) => ({
+    code: typeof s.code === "string" ? s.code : undefined,
+  }), //code must be non optional
   component: JoinPage,
 });
 
@@ -27,7 +29,11 @@ function JoinPage() {
   const enroll = useServerFn(enrollByCode);
   const m = useMutation({
     mutationFn: (c: string) => enroll({ data: { code: c } }),
-    onSuccess: ({ quizId }) => { toast.success("Enrolled!"); navigate({ to: "/my-quizzes" }); void quizId; },
+    onSuccess: ({ quizId }) => {
+      toast.success("Enrolled!");
+      navigate({ to: "/my-quizzes" });
+      void quizId;
+    },
     onError: (e: Error) => toast.error(e.message),
   });
 
@@ -36,26 +42,56 @@ function JoinPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [initialCode, session]);
 
-  if (loading || !session) return <div className="flex min-h-screen items-center justify-center"><Loader2 className="h-6 w-6 animate-spin text-muted-foreground" /></div>;
+  if (loading || !session)
+    return (
+      <div className="flex min-h-screen items-center justify-center">
+        <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+      </div>
+    );
 
   return (
     <div className="min-h-screen bg-background">
       <AppHeader role="student" />
-      <main className="mx-auto max-w-md px-6 py-10">
-        <Card>
-          <CardHeader>
-            <CardTitle>Join a quiz</CardTitle>
-            <CardDescription>Enter the quiz access code, or scan the QR shared by your teacher.</CardDescription>
+      <main className="mx-auto max-w-md px-4 py-8 sm:px-6">
+        <Card className="overflow-hidden">
+          <CardHeader className="text-center">
+            <span className="mx-auto mb-3 inline-flex h-12 w-12 items-center justify-center rounded-xl bg-primary/10 ring-1 ring-primary/20">
+              <KeyRound className="h-6 w-6 text-primary" />
+            </span>
+            <CardTitle className="text-lg">Join a quiz</CardTitle>
+            <CardDescription>
+              Enter the quiz access code, or scan the QR shared by your instructor.
+            </CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
             <div className="flex gap-2">
-              <Input placeholder="QUIZ-AB12CD" value={code} onChange={(e) => setCode(e.target.value.toUpperCase())} className="font-mono" />
-              <Button onClick={() => m.mutate(code)} disabled={!code || m.isPending}>Join</Button>
+              <Input
+                placeholder="QUIZ-AB12CD"
+                value={code}
+                onChange={(e) => setCode(e.target.value.toUpperCase())}
+                className="font-mono uppercase tracking-wider"
+              />
+              <Button onClick={() => m.mutate(code)} disabled={!code || m.isPending}>
+                Join
+              </Button>
             </div>
             <Button variant="outline" className="w-full" onClick={() => setScanning((s) => !s)}>
-              <QrCode className="mr-1 h-4 w-4" />{scanning ? "Stop scanner" : "Scan QR code"}
+              <QrCode className="mr-1 h-4 w-4" />
+              {scanning ? "Stop scanner" : "Scan QR code"}
             </Button>
-            {scanning && <QrScanner onCode={(c) => { setCode(c); setScanning(false); m.mutate(c); }} />}
+            {scanning && (
+              <QrScanner
+                onCode={(c) => {
+                  setCode(c);
+                  setScanning(false);
+                  m.mutate(c);
+                }}
+              />
+            )}
+            <p className="flex items-center justify-center gap-1.5 text-center text-xs text-muted-foreground">
+              <ShieldCheck className="h-3.5 w-3.5 text-success" />
+              Joining will enroll you in the assessment so you can take it.
+            </p>
           </CardContent>
         </Card>
       </main>
@@ -84,13 +120,27 @@ function QrScanner({ onCode }: { onCode: (code: string) => void }) {
             try {
               const u = new URL(text);
               const c = u.searchParams.get("code");
-              if (c) { onCode(c.toUpperCase()); return; }
-            } catch { /* not a URL */ }
+              if (c) {
+                onCode(c.toUpperCase());
+                return;
+              }
+            } catch {
+              /* not a URL */
+            }
             onCode(text.trim().toUpperCase());
           },
-          () => { /* ignore per-frame errors */ }
+          () => {
+            /* ignore per-frame errors */
+          },
         );
-        stopRef.current = async () => { try { await scanner.stop(); await scanner.clear(); } catch { /* ignore */ } };
+        stopRef.current = async () => {
+          try {
+            await scanner.stop();
+            await scanner.clear();
+          } catch {
+            /* ignore */
+          }
+        };
       } catch (e: any) {
         toast.error("Camera unavailable: " + e.message);
       }

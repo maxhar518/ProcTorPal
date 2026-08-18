@@ -5,16 +5,17 @@ import { useEffect, useRef, useState } from "react";
 import { getMyProfile, updateMyProfile } from "@/lib/auth/profile.functions";
 import { supabase } from "@/integrations/supabase/client";
 import { AppHeader } from "@/components/app-header";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
-import { Loader2, Upload } from "lucide-react";
+import { Badge } from "@/components/ui/badge";
+import { Loader2, Upload, UserCircle } from "lucide-react";
 import { toast } from "sonner";
 
 export const Route = createFileRoute("/_authenticated/profile")({
-  head: () => ({ meta: [{ title: "Profile — ProctorAI" }] }),
+  head: () => ({ meta: [{ title: "Profile — ProctorPal" }] }),
   component: ProfilePage,
   errorComponent: ({ error }) => (
     <div className="p-8 text-sm text-destructive">Failed to load profile: {error.message}</div>
@@ -129,16 +130,30 @@ function ProfilePage() {
   return (
     <div className="min-h-screen bg-background">
       <AppHeader role={role} />
-      <main className="mx-auto max-w-3xl px-6 py-10">
-        <h1 className="mb-6 text-2xl font-semibold">Your profile</h1>
+      <main className="mx-auto max-w-3xl px-4 py-8 sm:px-6">
+        <div className="mb-6 flex items-center gap-3">
+          <span className="inline-flex h-10 w-10 items-center justify-center rounded-lg bg-primary/10 ring-1 ring-primary/20">
+            <UserCircle className="h-5 w-5 text-primary" />
+          </span>
+          <div>
+            <h1 className="text-2xl font-bold tracking-tight">Your profile</h1>
+            <p className="text-sm text-muted-foreground">
+              Manage your identity and academic information.
+            </p>
+          </div>
+          <Badge variant="outline_info" className="ml-auto hidden sm:inline-flex">
+            {role === "teacher" ? "Instructor" : "Candidate"}
+          </Badge>
+        </div>
 
         <Card>
           <CardHeader>
             <CardTitle className="text-base">Profile picture</CardTitle>
+            <CardDescription>Used across the platform and proctoring evidence.</CardDescription>
           </CardHeader>
           <CardContent>
             <div className="flex items-center gap-4">
-              <Avatar className="h-16 w-16">
+              <Avatar className="h-16 w-16 ring-2 ring-primary/30">
                 <AvatarImage src={data?.profile?.profile_picture_url ?? undefined} />
                 <AvatarFallback>{initials}</AvatarFallback>
               </Avatar>
@@ -176,7 +191,8 @@ function ProfilePage() {
           className="mt-6"
           onSubmit={(e) => {
             e.preventDefault();
-            const normalizedStudentId = role === "student" ? normalizeStudentId(form.student_id) : form.student_id;
+            const normalizedStudentId =
+              role === "student" ? normalizeStudentId(form.student_id) : form.student_id;
             if (role === "student") {
               if (!normalizedStudentId) {
                 toast.error("Student ID is required.");
@@ -224,7 +240,9 @@ function ProfilePage() {
                     <Input
                       id="student_id"
                       value={form.student_id}
-                      onChange={(e) => setForm({ ...form, student_id: normalizeStudentId(e.target.value) })}
+                      onChange={(e) =>
+                        setForm({ ...form, student_id: normalizeStudentId(e.target.value) })
+                      }
                       maxLength={60}
                       placeholder="ABC-00A-000"
                     />

@@ -8,14 +8,23 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/com
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { Loader2, ShieldAlert, Eye, Users, AlertTriangle, BarChart3 } from "lucide-react";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table";
+import { Loader2, ShieldAlert, Eye, Users, AlertTriangle, BarChart3, Search } from "lucide-react";
 import { getTeacherReportOverview } from "@/lib/proctoring/proctoring.functions";
 
 export const Route = createFileRoute("/_authenticated/reports")({
-  head: () => ({ meta: [{ title: "Reports — ProctorAI" }] }),
+  head: () => ({ meta: [{ title: "Reports — ProctorPal" }] }),
   component: ReportsPage,
-  errorComponent: ({ error }) => <div className="p-8 text-sm text-destructive">{error.message}</div>,
+  errorComponent: ({ error }) => (
+    <div className="p-8 text-sm text-destructive">{error.message}</div>
+  ),
 });
 
 function ReportsPage() {
@@ -48,58 +57,66 @@ function ReportsPage() {
   }, [data]);
 
   if (loading || isLoading) {
-    return <div className="flex min-h-screen items-center justify-center"><Loader2 className="h-6 w-6 animate-spin text-muted-foreground" /></div>;
+    return (
+      <div className="flex min-h-screen items-center justify-center">
+        <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+      </div>
+    );
   }
   if (!data) return null;
 
   return (
     <div className="min-h-screen bg-background">
       <AppHeader role="teacher" />
-      <main className="mx-auto max-w-6xl px-6 py-10">
+      <main className="mx-auto max-w-6xl px-4 py-8 sm:px-6">
         <div className="mb-6">
-          <h1 className="text-2xl font-semibold">Proctoring reports</h1>
-          <p className="text-sm text-muted-foreground">Overview of all quizzes and their proctoring activity.</p>
+          <h1 className="text-2xl font-bold tracking-tight">Proctoring reports</h1>
+          <p className="mt-1 text-sm text-muted-foreground">
+            Overview of all quizzes and their proctoring activity.
+          </p>
         </div>
 
         <div className="mb-6 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-          <Card>
-            <CardHeader className="pb-1 flex flex-row items-center justify-between space-y-0">
-              <CardDescription>Total quizzes</CardDescription>
-              <BarChart3 className="h-4 w-4 text-muted-foreground" />
-            </CardHeader>
-            <CardContent><div className="text-2xl font-semibold">{stats.totalQuizzes}</div></CardContent>
-          </Card>
-          <Card>
-            <CardHeader className="pb-1 flex flex-row items-center justify-between space-y-0">
-              <CardDescription>Total attempts</CardDescription>
-              <Users className="h-4 w-4 text-muted-foreground" />
-            </CardHeader>
-            <CardContent><div className="text-2xl font-semibold">{stats.totalAttempts}</div></CardContent>
-          </Card>
-          <Card>
-            <CardHeader className="pb-1 flex flex-row items-center justify-between space-y-0">
-              <CardDescription>Quizzes with high risk</CardDescription>
-              <ShieldAlert className="h-4 w-4 text-destructive" />
-            </CardHeader>
-            <CardContent>
-              <div className="text-2xl font-semibold text-destructive">{stats.highRiskQuizzes}</div>
-            </CardContent>
-          </Card>
-          <Card>
-            <CardHeader className="pb-1 flex flex-row items-center justify-between space-y-0">
-              <CardDescription>Total critical events</CardDescription>
-              <AlertTriangle className="h-4 w-4 text-yellow-500" />
-            </CardHeader>
-            <CardContent><div className="text-2xl font-semibold">{stats.totalCritical}</div></CardContent>
-          </Card>
+          <StatCard
+            icon={<BarChart3 className="h-4 w-4 text-primary" />}
+            label="Total quizzes"
+            value={stats.totalQuizzes}
+            tone="primary"
+          />
+          <StatCard
+            icon={<Users className="h-4 w-4 text-info" />}
+            label="Total attempts"
+            value={stats.totalAttempts}
+            tone="info"
+          />
+          <StatCard
+            icon={<ShieldAlert className="h-4 w-4 text-destructive" />}
+            label="Quizzes with high risk"
+            value={stats.highRiskQuizzes}
+            tone="danger"
+          />
+          <StatCard
+            icon={<AlertTriangle className="h-4 w-4 text-warning" />}
+            label="Total critical events"
+            value={stats.totalCritical}
+            tone="warning"
+          />
         </div>
 
         <Card>
           <CardHeader>
             <CardTitle>Quizzes</CardTitle>
-            <CardDescription>{quizzes.length} of {data.quizzes.length} shown</CardDescription>
-            <div className="mt-2">
-              <Input placeholder="Search quiz title" value={search} onChange={(e) => setSearch(e.target.value)} className="max-w-xs" />
+            <CardDescription>
+              {quizzes.length} of {data.quizzes.length} shown
+            </CardDescription>
+            <div className="relative mt-2 max-w-xs">
+              <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+              <Input
+                placeholder="Search quiz title"
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                className="pl-9"
+              />
             </div>
           </CardHeader>
           <CardContent>
@@ -118,36 +135,52 @@ function ReportsPage() {
               </TableHeader>
               <TableBody>
                 {quizzes.length === 0 ? (
-                  <TableRow><TableCell colSpan={8} className="text-center text-muted-foreground">No quizzes found.</TableCell></TableRow>
-                ) : quizzes.map((q) => (
-                  <TableRow key={q.quiz_id} className={q.high_risk_count > 0 ? "bg-destructive/5" : undefined}>
-                    <TableCell>
-                      <div className="font-medium">{q.title}</div>
-                      <div className="text-xs text-muted-foreground">Created {new Date(q.created_at).toLocaleDateString()}</div>
-                    </TableCell>
-                    <TableCell><Badge variant={q.status === "published" ? "default" : "secondary"}>{q.status}</Badge></TableCell>
-                    <TableCell>{q.total_attempts}</TableCell>
-                    <TableCell>{q.completed_attempts}</TableCell>
-                    <TableCell>
-                      {q.high_risk_count > 0 ? (
-                        <span className="font-medium text-destructive">{q.high_risk_count}</span>
-                      ) : (
-                        <span>0</span>
-                      )}
-                    </TableCell>
-                    <TableCell>{q.total_critical}</TableCell>
-                    <TableCell className="text-xs text-muted-foreground">
-                      {q.latest_attempt_at ? new Date(q.latest_attempt_at).toLocaleString() : "—"}
-                    </TableCell>
-                    <TableCell>
-                      <Button asChild size="sm" variant="ghost">
-                        <Link to="/quizzes/$quizId/report" params={{ quizId: q.quiz_id }}>
-                          <Eye className="mr-1 h-4 w-4" />View report
-                        </Link>
-                      </Button>
+                  <TableRow>
+                    <TableCell colSpan={8} className="text-center text-muted-foreground">
+                      No quizzes found.
                     </TableCell>
                   </TableRow>
-                ))}
+                ) : (
+                  quizzes.map((q) => (
+                    <TableRow
+                      key={q.quiz_id}
+                      className={q.high_risk_count > 0 ? "bg-destructive/5" : undefined}
+                    >
+                      <TableCell>
+                        <div className="font-medium">{q.title}</div>
+                        <div className="text-xs text-muted-foreground">
+                          Created {new Date(q.created_at).toLocaleDateString()}
+                        </div>
+                      </TableCell>
+                      <TableCell>
+                        <StatusBadge status={q.status} />
+                      </TableCell>
+                      <TableCell>{q.total_attempts}</TableCell>
+                      <TableCell>{q.completed_attempts}</TableCell>
+                      <TableCell>
+                        {q.high_risk_count > 0 ? (
+                          <span className="font-semibold text-destructive">
+                            {q.high_risk_count}
+                          </span>
+                        ) : (
+                          <span className="text-muted-foreground">0</span>
+                        )}
+                      </TableCell>
+                      <TableCell>{q.total_critical}</TableCell>
+                      <TableCell className="text-xs text-muted-foreground">
+                        {q.latest_attempt_at ? new Date(q.latest_attempt_at).toLocaleString() : "—"}
+                      </TableCell>
+                      <TableCell>
+                        <Button asChild size="sm" variant="ghost">
+                          <Link to="/quizzes/$quizId/report" params={{ quizId: q.quiz_id }}>
+                            <Eye className="mr-1 h-4 w-4" />
+                            View report
+                          </Link>
+                        </Button>
+                      </TableCell>
+                    </TableRow>
+                  ))
+                )}
               </TableBody>
             </Table>
           </CardContent>
@@ -155,4 +188,51 @@ function ReportsPage() {
       </main>
     </div>
   );
+}
+
+function StatCard({
+  icon,
+  label,
+  value,
+  tone,
+}: {
+  icon: React.ReactNode;
+  label: string;
+  value: number;
+  tone: "primary" | "info" | "danger" | "warning";
+}) {
+  const tile =
+    tone === "danger"
+      ? "bg-destructive/10 text-destructive ring-1 ring-destructive/20"
+      : tone === "warning"
+        ? "bg-warning/10 text-warning ring-1 ring-warning/20"
+        : tone === "info"
+          ? "bg-info/10 text-info ring-1 ring-info/20"
+          : "bg-primary/10 text-primary ring-1 ring-primary/20";
+  const valueColor =
+    tone === "danger"
+      ? "text-destructive"
+      : tone === "warning"
+        ? "text-warning"
+        : "text-foreground";
+  return (
+    <Card>
+      <CardContent className="flex items-center gap-3 p-4">
+        <span
+          className={`inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-lg ${tile}`}
+        >
+          {icon}
+        </span>
+        <div className="min-w-0">
+          <div className="text-xs text-muted-foreground">{label}</div>
+          <div className={`text-2xl font-bold ${valueColor}`}>{value}</div>
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
+
+function StatusBadge({ status }: { status: "draft" | "published" }) {
+  if (status === "published") return <Badge variant="outline_success">Published</Badge>;
+  return <Badge variant="secondary">Draft</Badge>;
 }
